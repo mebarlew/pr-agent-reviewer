@@ -1,0 +1,25 @@
+{
+  "providers": {
+    "codex": {
+      "type": "acp",
+      "command": "codex-acp",
+      "args": [],
+      "env": {
+        "INITIAL_AGENT_MODE": "read-only"
+      },
+      "timeoutMs": 600000
+    },
+    "claude": {
+      "type": "acp",
+      "command": "claude-agent-acp",
+      "args": [],
+      "timeoutMs": 600000
+    },
+    "gemini": {
+      "type": "cli",
+      "command": "gemini",
+      "args": [],
+      "timeoutMs": 600000
+    }
+  }
+}

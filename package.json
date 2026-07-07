@@ -1,0 +1,23 @@
+{
+  "name": "pr-agent-reviewer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "electron/main.cjs",
+  "productName": "PR Agent Reviewer",
+  "bin": {
+    "pr-agent-review": "./bin/pr-agent-review.js"
+  },
+  "scripts": {
+    "app": "node ./src/server.js",
+    "desktop": "electron .",
+    "check": "node --check bin/pr-agent-review.js && node --check electron/*.cjs && node --check src/*.js && node --check src/providers/*.js && node --check src/review/*.js && node --check app/*.js && node --check test/*.test.js && node --check fixtures/*.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "electron": "^43.0.0"
+  }
+}
