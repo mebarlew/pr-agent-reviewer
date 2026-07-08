@@ -460,10 +460,7 @@ function renderFindingList(findings) {
   elements.commentsPanel.replaceChildren();
 
   if (findings.length === 0) {
-    const empty = document.createElement("p");
-    empty.className = "empty";
-    empty.textContent = "No findings.";
-    elements.commentsPanel.append(empty);
+    renderEmptyMessage(elements.commentsPanel, "No findings.");
     return;
   }
 
@@ -679,11 +676,16 @@ function clearResults() {
   elements.counts.textContent = "";
   elements.promptPanel.textContent = "Run a review to generate a fix prompt.";
   elements.commentsPanel.replaceChildren();
+  renderEmptyMessage(elements.commentsPanel, "Run a review to see findings here.");
   elements.filesPanel.replaceChildren();
+  renderEmptyMessage(elements.filesPanel, "Run a review to inspect changed files.");
+}
+
+function renderEmptyMessage(container, message) {
   const empty = document.createElement("p");
   empty.className = "empty";
-  empty.textContent = "Run a review to inspect changed files.";
-  elements.filesPanel.append(empty);
+  empty.textContent = message;
+  container.append(empty);
 }
 
 function setBusy(isBusy, message) {

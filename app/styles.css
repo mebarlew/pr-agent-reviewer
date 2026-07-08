@@ -27,10 +27,7 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-  background:
-    radial-gradient(circle at 8% 0%, rgba(79, 140, 255, 0.18), transparent 34%),
-    radial-gradient(circle at 88% 12%, rgba(191, 82, 255, 0.12), transparent 30%),
-    var(--bg);
+  background: var(--bg);
   color: var(--text);
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -76,7 +73,7 @@ h1 {
 }
 
 .provider-strip {
-  display: none;
+  display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 8px;
@@ -97,13 +94,17 @@ h1 {
 
 .workspace {
   display: grid;
-  grid-template-columns: minmax(300px, 390px) minmax(0, 1fr);
+  grid-template-columns: minmax(280px, 340px) minmax(0, 1fr) minmax(300px, 360px);
   gap: 8px;
+  height: calc(100vh - 53px);
+  min-height: 0;
   padding: 8px;
 }
 
 .control-panel,
-.review-surface {
+.review-surface,
+.review-dock {
+  min-height: 0;
   border: 1px solid var(--line);
   background: var(--panel);
   box-shadow: var(--shadow);
@@ -113,6 +114,7 @@ h1 {
   display: grid;
   align-content: start;
   gap: 13px;
+  overflow: auto;
   padding: 12px;
   border-radius: 9px;
 }
@@ -391,7 +393,7 @@ button.primary:hover:not(:disabled) {
 
 .review-surface {
   display: grid;
-  grid-template-rows: auto auto auto 1fr;
+  grid-template-rows: auto auto minmax(0, 1fr);
   min-width: 0;
   border-radius: 9px;
   overflow: hidden;
@@ -423,22 +425,21 @@ button.primary:hover:not(:disabled) {
 }
 
 .summary-editor {
-  padding: 12px 14px 14px;
+  padding: 12px;
   border-bottom: 1px solid var(--line);
-  background: var(--panel);
+  background: var(--panel-soft);
 }
 
 .result-actions {
-  display: flex;
-  justify-content: flex-end;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 8px;
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--line);
+  padding: 12px;
+  border-top: 1px solid var(--line);
   background: var(--panel-strong);
 }
 
 .result-actions button {
-  width: auto;
   padding: 0 12px;
 }
 
@@ -463,16 +464,44 @@ button.primary:hover:not(:disabled) {
 
 .tab-panel {
   display: none;
-  min-height: 280px;
-  max-height: calc(100vh - 328px);
+  min-height: 0;
+  max-height: none;
   overflow: auto;
-  padding: 12px 14px;
+  padding: 10px;
 }
 
 .tab-panel.active {
+  display: block;
+}
+
+.review-dock {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  border-radius: 9px;
+  overflow: hidden;
+}
+
+.dock-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 58px;
+  padding: 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--chrome);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 760;
+}
+
+.dock-comments {
   display: grid;
   align-content: start;
-  gap: 12px;
+  gap: 10px;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px;
 }
 
 .finding {
@@ -529,7 +558,8 @@ button.primary:hover:not(:disabled) {
 .files-layout {
   display: grid;
   grid-template-columns: minmax(210px, 30%) minmax(0, 1fr);
-  min-height: 100%;
+  height: 100%;
+  min-height: 0;
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 7px;
@@ -540,6 +570,7 @@ button.primary:hover:not(:disabled) {
   display: grid;
   grid-template-rows: auto 1fr;
   min-width: 0;
+  min-height: 0;
   border-right: 1px solid var(--line);
   background: #151820;
 }
@@ -555,6 +586,7 @@ button.primary:hover:not(:disabled) {
 .file-list {
   display: grid;
   align-content: start;
+  min-height: 0;
   overflow: auto;
   padding: 6px;
 }
@@ -609,13 +641,15 @@ button.primary:hover:not(:disabled) {
 
 .file-diff-pane {
   min-width: 0;
+  min-height: 0;
   overflow: hidden;
 }
 
 .file-diff {
   display: grid;
   grid-template-rows: auto 1fr;
-  min-height: 100%;
+  height: 100%;
+  min-height: 0;
 }
 
 .file-diff-header {
@@ -638,6 +672,7 @@ button.primary:hover:not(:disabled) {
 
 .diff-view {
   margin: 0;
+  min-height: 0;
   overflow: auto;
   background: #0f1116;
   color: #bbc5d8;
@@ -710,6 +745,19 @@ button.primary:hover:not(:disabled) {
   font-size: 13px;
 }
 
+@media (max-width: 1180px) {
+  .workspace {
+    grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
+    height: auto;
+    min-height: calc(100vh - 53px);
+  }
+
+  .review-dock {
+    grid-column: 1 / -1;
+    min-height: 420px;
+  }
+}
+
 @media (max-width: 880px) {
   .topbar,
   .summary-row {
@@ -723,6 +771,7 @@ button.primary:hover:not(:disabled) {
 
   .workspace {
     grid-template-columns: 1fr;
+    height: auto;
   }
 
   .tool-rail {

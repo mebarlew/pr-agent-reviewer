@@ -10,7 +10,7 @@
     <main class="shell">
       <header class="topbar">
         <div class="brand-block">
-          <h1>PR Agent Reviewer</h1>
+          <h1>PR Review Workbench</h1>
           <p id="statusText">Ready</p>
         </div>
         <div class="provider-strip" id="providerStrip"></div>
@@ -19,8 +19,8 @@
       <section class="workspace" aria-label="Review workspace">
         <form class="control-panel" id="reviewForm">
           <div class="panel-title">
-            <span>Review a PR</span>
-            <span class="mode-pill">Simple Mode</span>
+            <span>PR Source</span>
+            <span class="mode-pill">Local</span>
           </div>
 
           <label>
@@ -90,34 +90,43 @@
         <section class="review-surface" aria-live="polite">
           <div class="summary-row">
             <div>
-              <span class="meta-label">PR</span>
+              <span class="meta-label">Diff workspace</span>
               <strong id="prTitle">No review loaded</strong>
             </div>
             <div class="counts" id="counts"></div>
           </div>
 
+          <div class="tabs">
+            <button class="tab active" type="button" data-tab="files">Files</button>
+            <button class="tab" type="button" data-tab="prompt">Fix Prompt</button>
+          </div>
+
+          <div class="tab-panel active" id="filesPanel">
+            <p class="empty">Run a review to inspect changed files.</p>
+          </div>
+          <pre class="tab-panel raw-output" id="promptPanel"></pre>
+        </section>
+
+        <aside class="review-dock" aria-label="AI review findings">
+          <div class="dock-title">
+            <span>AI Review</span>
+            <span class="mode-pill">Draft</span>
+          </div>
+
           <label class="summary-editor">
             Summary
-            <textarea id="summary" rows="4" disabled></textarea>
+            <textarea id="summary" rows="5" disabled></textarea>
           </label>
+
+          <div class="dock-comments" id="commentsPanel">
+            <p class="empty">Run a review to see findings here.</p>
+          </div>
 
           <div class="result-actions">
             <button id="copyPromptButton" type="button" disabled>Copy fix prompt</button>
             <button id="postButton" type="button" disabled>Post comments</button>
           </div>
-
-          <div class="tabs">
-            <button class="tab active" type="button" data-tab="comments">Comments</button>
-            <button class="tab" type="button" data-tab="files">Files</button>
-            <button class="tab" type="button" data-tab="prompt">Fix Prompt</button>
-          </div>
-
-          <div class="tab-panel active" id="commentsPanel"></div>
-          <div class="tab-panel" id="filesPanel">
-            <p class="empty">Run a review to inspect changed files.</p>
-          </div>
-          <pre class="tab-panel raw-output" id="promptPanel"></pre>
-        </section>
+        </aside>
       </section>
     </main>
 
