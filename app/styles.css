@@ -526,6 +526,89 @@ button.primary:hover:not(:disabled) {
   min-height: 64px;
 }
 
+.files-summary {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 10px 12px;
+  background: var(--panel-strong);
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.file-change {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #15181f;
+}
+
+.file-change-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  padding: 11px 12px;
+  cursor: pointer;
+  background: #1a1d25;
+}
+
+.file-change-summary strong {
+  overflow: hidden;
+  color: #d7e0f3;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-change-summary span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.file-patch-empty {
+  margin: 0;
+  padding: 12px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.diff-view {
+  margin: 0;
+  overflow: auto;
+  border-top: 1px solid var(--line);
+  background: #0f1116;
+  color: #bbc5d8;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.diff-line {
+  display: block;
+  min-width: max-content;
+  padding: 0 12px;
+  white-space: pre;
+}
+
+.diff-line.hunk {
+  background: rgba(79, 140, 255, 0.14);
+  color: #8fb5ff;
+}
+
+.diff-line.added {
+  background: rgba(67, 208, 138, 0.12);
+  color: #99e7bd;
+}
+
+.diff-line.removed {
+  background: rgba(255, 107, 117, 0.12);
+  color: #ffadb3;
+}
+
 .empty {
   margin: 0;
   color: var(--muted);

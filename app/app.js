@@ -1,4 +1,5 @@
 const state = {
+  files: [],
   githubTokenStatus: null,
   reviewId: null,
   pullRequest: null,
@@ -12,6 +13,7 @@ const elements = {
   clearGithubTokenButton: document.querySelector("#clearGithubTokenButton"),
   copyPromptButton: document.querySelector("#copyPromptButton"),
   counts: document.querySelector("#counts"),
+  filesPanel: document.querySelector("#filesPanel"),
   gitPanel: document.querySelector("#gitPanel"),
   githubToken: document.querySelector("#githubToken"),
   githubTokenStatus: document.querySelector("#githubTokenStatus"),
@@ -255,6 +257,7 @@ async function runReview() {
     });
 
     state.reviewId = result.reviewId;
+    state.files = Array.isArray(result.files) ? result.files : [];
     state.pullRequest = result.pullRequest;
 
     elements.prTitle.textContent = result.pullRequest.title;
@@ -262,13 +265,14 @@ async function runReview() {
     elements.summary.value = result.review.summary;
     const invalidCount = result.review.validationErrors?.length ?? 0;
     elements.counts.textContent = invalidCount
-      ? `${result.review.findings.length} findings, ${invalidCount} invalid`
-      : `${result.review.findings.length} findings`;
+      ? `${result.review.findings.length} findings, ${state.files.length} files, ${invalidCount} invalid`
+      : `${result.review.findings.length} findings, ${state.files.length} files`;
 
     renderFindingList([
       ...result.inlineFindings.map((finding) => ({ ...finding, kind: "inline" })),
       ...result.skippedFindings.map((finding) => ({ ...finding, kind: "manual" })),
     ]);
+    renderFileViewer(state.files);
     refreshFixPrompt();
 
     elements.copyPromptButton.disabled = false;
@@ -480,6 +484,89 @@ function renderFindingList(findings) {
   }
 }
 
+function renderFileViewer(files) {
+  elements.filesPanel.replaceChildren();
+
+  if (files.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "empty";
+    empty.textContent = "No changed files returned for this PR.";
+    elements.filesPanel.append(empty);
+    return;
+  }
+
+  const summary = document.createElement("div");
+  summary.className = "files-summary";
+  const totals = files.reduce(
+    (memo, file) => ({
+      additions: memo.additions + (file.additions ?? 0),
+      deletions: memo.deletions + (file.deletions ?? 0),
+    }),
+    { additions: 0, deletions: 0 },
+  );
+  summary.textContent = `${files.length} files changed / +${totals.additions} -${totals.deletions}`;
+  elements.filesPanel.append(summary);
+
+  files.forEach((file, index) => {
+    elements.filesPanel.append(createFileChange(file, index));
+  });
+}
+
+function createFileChange(file, index) {
+  const details = document.createElement("details");
+  details.className = "file-change";
+  details.open = index < 3;
+
+  const summary = document.createElement("summary");
+  summary.className = "file-change-summary";
+
+  const filename = document.createElement("strong");
+  filename.textContent = file.filename;
+
+  const meta = document.createElement("span");
+  meta.textContent = `${file.status ?? "changed"} / +${file.additions ?? 0} -${file.deletions ?? 0}`;
+
+  summary.append(filename, meta);
+  details.append(summary);
+
+  if (!file.patchAvailable || !file.patch) {
+    const unavailable = document.createElement("p");
+    unavailable.className = "file-patch-empty";
+    unavailable.textContent = "Patch not available from GitHub for this file.";
+    details.append(unavailable);
+    return details;
+  }
+
+  const patch = document.createElement("pre");
+  patch.className = "diff-view";
+
+  file.patch.split("\n").forEach((line) => {
+    const code = document.createElement("code");
+    code.className = `diff-line ${diffLineClass(line)}`;
+    code.textContent = line || " ";
+    patch.append(code);
+  });
+
+  details.append(patch);
+  return details;
+}
+
+function diffLineClass(line) {
+  if (line.startsWith("@@")) {
+    return "hunk";
+  }
+
+  if (line.startsWith("+") && !line.startsWith("+++")) {
+    return "added";
+  }
+
+  if (line.startsWith("-") && !line.startsWith("---")) {
+    return "removed";
+  }
+
+  return "context";
+}
+
 function collectFindings(kind) {
   return [...elements.commentsPanel.querySelectorAll(".finding")]
     .filter((node) => node.dataset.kind === kind)
@@ -541,6 +628,7 @@ function selectTab(name) {
 }
 
 function clearResults() {
+  state.files = [];
   state.reviewId = null;
   state.pullRequest = null;
   elements.postButton.disabled = true;
@@ -551,6 +639,11 @@ function clearResults() {
   elements.counts.textContent = "";
   elements.promptPanel.textContent = "Run a review to generate a fix prompt.";
   elements.commentsPanel.replaceChildren();
+  elements.filesPanel.replaceChildren();
+  const empty = document.createElement("p");
+  empty.className = "empty";
+  empty.textContent = "Run a review to inspect changed files.";
+  elements.filesPanel.append(empty);
 }
 
 function setBusy(isBusy, message) {
