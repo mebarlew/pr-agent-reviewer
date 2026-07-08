@@ -170,7 +170,8 @@ function rendererSmokeCheck() {
       document.querySelector('[data-tab="files"]').click();
       await waitFor(() => document.querySelector("#filesPanel").classList.contains("active"));
 
-      const fileName = document.querySelector(".file-change-summary strong")?.textContent;
+      const fileName = document.querySelector(".file-diff-header strong")?.textContent;
+      const activeFile = document.querySelector(".file-row.active strong")?.textContent;
       const summary = document.querySelector(".files-summary")?.textContent;
       const hunk = document.querySelectorAll(".diff-line.hunk").length;
       const added = document.querySelectorAll(".diff-line.added").length;
@@ -178,6 +179,10 @@ function rendererSmokeCheck() {
 
       if (fileName !== "src/app.js") {
         throw new Error("Expected src/app.js, got " + fileName);
+      }
+
+      if (activeFile !== "src/app.js") {
+        throw new Error("Expected active src/app.js, got " + activeFile);
       }
 
       if (summary !== "1 files changed / +2 -1") {

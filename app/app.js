@@ -4,6 +4,7 @@ const state = {
   reviewId: null,
   pullRequest: null,
   repoPullRequests: [],
+  selectedFileIndex: 0,
 };
 
 let authToken = "";
@@ -259,6 +260,7 @@ async function runReview() {
     state.reviewId = result.reviewId;
     state.files = Array.isArray(result.files) ? result.files : [];
     state.pullRequest = result.pullRequest;
+    state.selectedFileIndex = 0;
 
     elements.prTitle.textContent = result.pullRequest.title;
     elements.summary.disabled = false;
@@ -274,6 +276,7 @@ async function runReview() {
     ]);
     renderFileViewer(state.files);
     refreshFixPrompt();
+    selectTab("files");
 
     elements.copyPromptButton.disabled = false;
     elements.postButton.disabled = false;
@@ -486,6 +489,7 @@ function renderFindingList(findings) {
 
 function renderFileViewer(files) {
   elements.filesPanel.replaceChildren();
+  state.selectedFileIndex = Math.min(state.selectedFileIndex, Math.max(files.length - 1, 0));
 
   if (files.length === 0) {
     const empty = document.createElement("p");
@@ -505,20 +509,38 @@ function renderFileViewer(files) {
     { additions: 0, deletions: 0 },
   );
   summary.textContent = `${files.length} files changed / +${totals.additions} -${totals.deletions}`;
-  elements.filesPanel.append(summary);
 
+  const layout = document.createElement("div");
+  layout.className = "files-layout";
+
+  const sidebar = document.createElement("aside");
+  sidebar.className = "files-sidebar";
+  sidebar.append(summary);
+
+  const list = document.createElement("div");
+  list.className = "file-list";
   files.forEach((file, index) => {
-    elements.filesPanel.append(createFileChange(file, index));
+    list.append(createFileRow(file, index));
   });
+  sidebar.append(list);
+
+  const viewer = document.createElement("section");
+  viewer.className = "file-diff-pane";
+  viewer.append(createFileDiff(files[state.selectedFileIndex]));
+
+  layout.append(sidebar, viewer);
+  elements.filesPanel.append(layout);
 }
 
-function createFileChange(file, index) {
-  const details = document.createElement("details");
-  details.className = "file-change";
-  details.open = index < 3;
-
-  const summary = document.createElement("summary");
-  summary.className = "file-change-summary";
+function createFileRow(file, index) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = `file-row ${file.status ?? "changed"}`;
+  button.classList.toggle("active", index === state.selectedFileIndex);
+  button.addEventListener("click", () => {
+    state.selectedFileIndex = index;
+    renderFileViewer(state.files);
+  });
 
   const filename = document.createElement("strong");
   filename.textContent = file.filename;
@@ -526,15 +548,32 @@ function createFileChange(file, index) {
   const meta = document.createElement("span");
   meta.textContent = `${file.status ?? "changed"} / +${file.additions ?? 0} -${file.deletions ?? 0}`;
 
-  summary.append(filename, meta);
-  details.append(summary);
+  button.append(filename, meta);
+  return button;
+}
+
+function createFileDiff(file) {
+  const container = document.createElement("article");
+  container.className = "file-diff";
+
+  const header = document.createElement("div");
+  header.className = "file-diff-header";
+
+  const filename = document.createElement("strong");
+  filename.textContent = file.filename;
+
+  const meta = document.createElement("span");
+  meta.textContent = `${file.status ?? "changed"} / +${file.additions ?? 0} -${file.deletions ?? 0}`;
+
+  header.append(filename, meta);
+  container.append(header);
 
   if (!file.patchAvailable || !file.patch) {
     const unavailable = document.createElement("p");
     unavailable.className = "file-patch-empty";
     unavailable.textContent = "Patch not available from GitHub for this file.";
-    details.append(unavailable);
-    return details;
+    container.append(unavailable);
+    return container;
   }
 
   const patch = document.createElement("pre");
@@ -547,8 +586,8 @@ function createFileChange(file, index) {
     patch.append(code);
   });
 
-  details.append(patch);
-  return details;
+  container.append(patch);
+  return container;
 }
 
 function diffLineClass(line) {
@@ -631,6 +670,7 @@ function clearResults() {
   state.files = [];
   state.reviewId = null;
   state.pullRequest = null;
+  state.selectedFileIndex = 0;
   elements.postButton.disabled = true;
   elements.copyPromptButton.disabled = true;
   elements.summary.value = "";
