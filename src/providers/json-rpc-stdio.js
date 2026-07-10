@@ -22,6 +22,9 @@ export class JsonRpcStdioClient extends EventEmitter {
       this.#child.once("close", resolve);
     });
 
+    this.#child.stdin.on("error", () => {
+      // The child may exit before draining stdin; pending requests are rejected on close.
+    });
     this.#child.stderr.setEncoding("utf8");
     this.#child.stderr.on("data", (chunk) => {
       this.#stderr += chunk;
@@ -31,7 +34,9 @@ export class JsonRpcStdioClient extends EventEmitter {
     this.#child.once("close", (code) => {
       if (code !== 0 && this.#pending.size > 0) {
         this.#rejectAll(
-          new Error(`${command} exited with code ${code}.\n${this.#stderr.trim()}`),
+          new Error(
+            `${command} exited with code ${code}.\n${this.#stderr.trim()}`,
+          ),
         );
       }
     });

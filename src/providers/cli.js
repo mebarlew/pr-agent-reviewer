@@ -2,7 +2,9 @@ import { spawn } from "node:child_process";
 import { buildProviderEnv, DEFAULT_PROVIDER_TIMEOUT_MS } from "./env.js";
 
 export async function runCliProvider(provider, { prompt, workspace }) {
-  const args = (provider.args ?? []).map((arg) => (arg === "{prompt}" ? prompt : arg));
+  const args = (provider.args ?? []).map((arg) =>
+    arg === "{prompt}" ? prompt : arg,
+  );
   const passesPromptAsArg = args.includes(prompt);
   const timeoutMs = Number(provider.timeoutMs ?? DEFAULT_PROVIDER_TIMEOUT_MS);
   const child = spawn(provider.command, args, {
@@ -14,6 +16,9 @@ export async function runCliProvider(provider, { prompt, workspace }) {
   let stdout = "";
   let stderr = "";
 
+  child.stdin.on("error", () => {
+    // The child may exit before draining stdin; the exit code carries the real error.
+  });
   child.stdout.setEncoding("utf8");
   child.stderr.setEncoding("utf8");
   child.stdout.on("data", (chunk) => {
@@ -32,7 +37,9 @@ export async function runCliProvider(provider, { prompt, workspace }) {
   const exitCode = await waitForExit(child, timeoutMs, provider.command);
 
   if (exitCode !== 0) {
-    throw new Error(`${provider.command} exited with code ${exitCode}.\n${stderr.trim()}`);
+    throw new Error(
+      `${provider.command} exited with code ${exitCode}.\n${stderr.trim()}`,
+    );
   }
 
   return {

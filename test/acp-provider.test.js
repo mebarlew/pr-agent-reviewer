@@ -32,3 +32,26 @@ test("runAcpProvider sends a prompt and collects agent text chunks", async () =>
     ],
   });
 });
+
+test("JsonRpcStdioClient rejects pending requests when the agent exits without reading stdin", async () => {
+  const { JsonRpcStdioClient } =
+    await import("../src/providers/json-rpc-stdio.js");
+  const client = new JsonRpcStdioClient({
+    command: process.execPath,
+    args: ["-e", "setTimeout(() => process.exit(3), 100)"],
+    cwd: process.cwd(),
+  });
+
+  try {
+    await assert.rejects(
+      client.request(
+        "initialize",
+        { padding: "x".repeat(2 * 1024 * 1024) },
+        10_000,
+      ),
+      /exited with code 3/,
+    );
+  } finally {
+    await client.close();
+  }
+});
