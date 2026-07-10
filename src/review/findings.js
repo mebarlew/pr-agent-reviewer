@@ -14,11 +14,15 @@ export function parseAgentReview(text) {
       return;
     }
 
-    validationErrors.push(`findings[${index}] does not match the expected schema.`);
+    validationErrors.push(
+      `findings[${index}] does not match the expected schema.`,
+    );
   });
 
   if (rawFindings.length > 0 && findings.length === 0) {
-    throw new Error("Agent returned findings, but none matched the expected schema.");
+    throw new Error(
+      "Agent returned findings, but none matched the expected schema.",
+    );
   }
 
   return {
@@ -48,7 +52,13 @@ export function splitInlineFindings(findings, changedLines) {
   return { inline, skipped };
 }
 
-export function buildReviewMarkdown({ providerName, pullRequest, review, inlineFindings, skippedFindings }) {
+export function buildReviewMarkdown({
+  providerName,
+  pullRequest,
+  review,
+  inlineFindings,
+  skippedFindings,
+}) {
   const lines = [
     `## AI PR review (${providerName})`,
     "",
@@ -62,7 +72,9 @@ export function buildReviewMarkdown({ providerName, pullRequest, review, inlineF
     lines.push("", "### Findings not posted inline", "");
 
     for (const finding of skippedFindings) {
-      lines.push(`- **${finding.severity}** ${finding.path}:${finding.line} - ${finding.comment}`);
+      lines.push(
+        `- **${finding.severity}** ${finding.path}:${finding.line} - ${finding.comment}`,
+      );
       if (finding.suggestion) {
         lines.push(`  Suggested direction: ${finding.suggestion}`);
       }
@@ -70,15 +82,10 @@ export function buildReviewMarkdown({ providerName, pullRequest, review, inlineF
   }
 
   if (review.validationErrors?.length > 0) {
-    lines.push("", `Invalid findings ignored: ${review.validationErrors.length}`);
-  }
-
-  if (inlineFindings.length > 0) {
-    lines.push("", "### Inline findings", "");
-
-    for (const finding of inlineFindings) {
-      lines.push(`- **${finding.severity}** ${finding.path}:${finding.line} - ${finding.comment}`);
-    }
+    lines.push(
+      "",
+      `Invalid findings ignored: ${review.validationErrors.length}`,
+    );
   }
 
   return `${lines.join("\n")}\n`;
