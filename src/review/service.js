@@ -1,16 +1,32 @@
 import { loadConfig } from "../config.js";
-import { createPullRequestReview, fetchPullRequestContext, postIssueComment } from "../github.js";
+import {
+  createPullRequestReview,
+  fetchPullRequestContext,
+  postIssueComment,
+} from "../github.js";
 import { runProvider } from "../providers/index.js";
-import { buildReviewMarkdown, parseAgentReview, splitInlineFindings } from "./findings.js";
+import {
+  buildReviewMarkdown,
+  parseAgentReview,
+  splitInlineFindings,
+} from "./findings.js";
 import { buildReviewPrompt } from "./prompt.js";
 
-export async function runReview({ pullRequest, providerName, workspace, configPath, githubToken }) {
+export async function runReview({
+  pullRequest,
+  providerName,
+  workspace,
+  configPath,
+  githubToken,
+}) {
   const config = await loadConfig(configPath);
   const provider = config.providers[providerName];
 
   if (!provider) {
     const known = Object.keys(config.providers).sort().join(", ") || "none";
-    throw new Error(`Unknown provider "${providerName}". Configured providers: ${known}`);
+    throw new Error(
+      `Unknown provider "${providerName}". Configured providers: ${known}`,
+    );
   }
 
   const context = await fetchPullRequestContext(pullRequest, githubToken);
@@ -57,15 +73,28 @@ export async function postReview({
     skippedFindings,
   });
 
+  let githubReviewId = null;
+
   if (inlineFindings.length > 0) {
-    await createPullRequestReview(pullRequest, inlineFindings, githubToken, markdown);
+    const created = await createPullRequestReview(
+      pullRequest,
+      inlineFindings,
+      githubToken,
+      markdown,
+    );
+    githubReviewId = created.reviewId;
   } else if (skippedFindings.length > 0 || Boolean(review.summary)) {
     await postIssueComment(pullRequest, markdown, githubToken);
   }
 
   return {
+    githubReviewId,
     inlineComments: inlineFindings.length,
     summaryComments:
-      inlineFindings.length > 0 || skippedFindings.length > 0 || Boolean(review.summary) ? 1 : 0,
+      inlineFindings.length > 0 ||
+      skippedFindings.length > 0 ||
+      Boolean(review.summary)
+        ? 1
+        : 0,
   };
 }

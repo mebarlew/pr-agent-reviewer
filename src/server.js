@@ -6,7 +6,12 @@ import { fileURLToPath } from "node:url";
 import { randomUUID, timingSafeEqual } from "node:crypto";
 import { loadConfig } from "./config.js";
 import { readGitState } from "./git.js";
-import { fetchOpenPullRequestsForRepo, parsePullRequestRef, parseRepositoryRef } from "./github.js";
+import {
+  fetchOpenPullRequestsForRepo,
+  fetchReviewThreads,
+  parsePullRequestRef,
+  parseRepositoryRef,
+} from "./github.js";
 import { normalizeFinding } from "./review/schema.js";
 import { postReview, runReview } from "./review/service.js";
 
@@ -22,7 +27,9 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const server = createAppServer({ authToken });
 
   server.listen(port, "127.0.0.1", () => {
-    console.log(`PR Agent Reviewer running at http://127.0.0.1:${port}/?token=${authToken}`);
+    console.log(
+      `PR Agent Reviewer running at http://127.0.0.1:${port}/?token=${authToken}`,
+    );
   });
 }
 
@@ -47,8 +54,14 @@ export function createAppServer({
           return;
         }
 
-        if (request.method !== "GET" && request.method !== "DELETE" && !hasJsonContentType(request)) {
-          sendJson(response, 415, { error: "Expected application/json request body" });
+        if (
+          request.method !== "GET" &&
+          request.method !== "DELETE" &&
+          !hasJsonContentType(request)
+        ) {
+          sendJson(response, 415, {
+            error: "Expected application/json request body",
+          });
           return;
         }
       }
@@ -64,7 +77,12 @@ export function createAppServer({
       }
 
       if (request.method === "POST" && url.pathname === "/api/github/pulls") {
-        await handleListPullRequests(request, response, maxBodyBytes, githubTokenStore);
+        await handleListPullRequests(
+          request,
+          response,
+          maxBodyBytes,
+          githubTokenStore,
+        );
         return;
       }
 
@@ -74,7 +92,12 @@ export function createAppServer({
       }
 
       if (request.method === "PUT" && url.pathname === "/api/github-token") {
-        await handleSaveGithubToken(request, response, maxBodyBytes, githubTokenStore);
+        await handleSaveGithubToken(
+          request,
+          response,
+          maxBodyBytes,
+          githubTokenStore,
+        );
         return;
       }
 
@@ -84,13 +107,32 @@ export function createAppServer({
       }
 
       if (request.method === "POST" && url.pathname === "/api/reviews") {
-        await handleRunReview(request, response, maxBodyBytes, githubTokenStore);
+        await handleRunReview(
+          request,
+          response,
+          maxBodyBytes,
+          githubTokenStore,
+        );
         return;
       }
 
       const postMatch = url.pathname.match(/^\/api\/reviews\/([^/]+)\/post$/);
       if (request.method === "POST" && postMatch) {
-        await handlePostReview(postMatch[1], request, response, maxBodyBytes, githubTokenStore);
+        await handlePostReview(
+          postMatch[1],
+          request,
+          response,
+          maxBodyBytes,
+          githubTokenStore,
+        );
+        return;
+      }
+
+      const threadsMatch = url.pathname.match(
+        /^\/api\/reviews\/([^/]+)\/threads$/,
+      );
+      if (request.method === "GET" && threadsMatch) {
+        await handleReviewThreads(threadsMatch[1], response, githubTokenStore);
         return;
       }
 
@@ -113,11 +155,13 @@ export function createAppServer({
 
 async function handleConfig(response, githubTokenStore) {
   const config = await loadConfig();
-  const providers = Object.entries(config.providers).map(([name, provider]) => ({
-    name,
-    type: provider.type,
-    command: provider.command,
-  }));
+  const providers = Object.entries(config.providers).map(
+    ([name, provider]) => ({
+      name,
+      type: provider.type,
+      command: provider.command,
+    }),
+  );
   const githubToken = await getGithubTokenStatus(githubTokenStore);
 
   sendJson(response, 200, {
@@ -128,10 +172,20 @@ async function handleConfig(response, githubTokenStore) {
   });
 }
 
-async function handleRunReview(request, response, maxBodyBytes, githubTokenStore) {
+async function handleRunReview(
+  request,
+  response,
+  maxBodyBytes,
+  githubTokenStore,
+) {
   const body = await readJson(request, maxBodyBytes);
-  const providerName = requiredString(body.providerName, "providerName is required");
-  const pullRequest = parsePullRequestRef(requiredString(body.prRef, "prRef is required"));
+  const providerName = requiredString(
+    body.providerName,
+    "providerName is required",
+  );
+  const pullRequest = parsePullRequestRef(
+    requiredString(body.prRef, "prRef is required"),
+  );
   const githubToken = await resolveGithubToken(body, githubTokenStore);
   const result = await runReview({
     pullRequest,
@@ -149,25 +203,31 @@ async function handleRunReview(request, response, maxBodyBytes, githubTokenStore
   });
 }
 
-async function handleReadGit(request, response, maxBodyBytes, githubTokenStore) {
+async function handleReadGit(
+  request,
+  response,
+  maxBodyBytes,
+  githubTokenStore,
+) {
   const body = await readJson(request, maxBodyBytes);
   const githubToken = await resolveGithubToken(body, githubTokenStore);
-  const state = await readGitState(
-    body.workspace || cwd(),
-    githubToken,
-  );
+  const state = await readGitState(body.workspace || cwd(), githubToken);
 
   sendJson(response, 200, state);
 }
 
-async function handleListPullRequests(request, response, maxBodyBytes, githubTokenStore) {
+async function handleListPullRequests(
+  request,
+  response,
+  maxBodyBytes,
+  githubTokenStore,
+) {
   const body = await readJson(request, maxBodyBytes);
-  const repo = parseRepositoryRef(requiredString(body.repoRef, "repoRef is required"));
-  const githubToken = await resolveGithubToken(body, githubTokenStore);
-  const result = await fetchOpenPullRequestsForRepo(
-    repo,
-    githubToken,
+  const repo = parseRepositoryRef(
+    requiredString(body.repoRef, "repoRef is required"),
   );
+  const githubToken = await resolveGithubToken(body, githubTokenStore);
+  const result = await fetchOpenPullRequestsForRepo(repo, githubToken);
 
   sendJson(response, 200, result);
 }
@@ -176,14 +236,23 @@ async function handleGithubTokenStatus(response, githubTokenStore) {
   sendJson(response, 200, await getGithubTokenStatus(githubTokenStore));
 }
 
-async function handleSaveGithubToken(request, response, maxBodyBytes, githubTokenStore) {
+async function handleSaveGithubToken(
+  request,
+  response,
+  maxBodyBytes,
+  githubTokenStore,
+) {
   if (!githubTokenStore) {
-    sendJson(response, 501, { error: "Secure token storage is available in the desktop app." });
+    sendJson(response, 501, {
+      error: "Secure token storage is available in the desktop app.",
+    });
     return;
   }
 
   const body = await readJson(request, maxBodyBytes);
-  await githubTokenStore.saveToken(requiredString(body.githubToken, "GitHub token is required"));
+  await githubTokenStore.saveToken(
+    requiredString(body.githubToken, "GitHub token is required"),
+  );
   sendJson(response, 200, await getGithubTokenStatus(githubTokenStore));
 }
 
@@ -195,7 +264,13 @@ async function handleClearGithubToken(response, githubTokenStore) {
   sendJson(response, 200, await getGithubTokenStatus(githubTokenStore));
 }
 
-async function handlePostReview(reviewId, request, response, maxBodyBytes, githubTokenStore) {
+async function handlePostReview(
+  reviewId,
+  request,
+  response,
+  maxBodyBytes,
+  githubTokenStore,
+) {
   const cached = getCachedReview(reviewId);
   if (!cached) {
     sendJson(response, 404, { error: "Review expired or unknown" });
@@ -205,10 +280,17 @@ async function handlePostReview(reviewId, request, response, maxBodyBytes, githu
   const body = await readJson(request, maxBodyBytes);
   const review = {
     ...cached.review,
-    summary: typeof body.summary === "string" ? body.summary : cached.review.summary,
+    summary:
+      typeof body.summary === "string" ? body.summary : cached.review.summary,
   };
-  const inlineFindings = cleanFindings(body.inlineFindings, cached.inlineFindings);
-  const skippedFindings = cleanFindings(body.skippedFindings, cached.skippedFindings);
+  const inlineFindings = cleanFindings(
+    body.inlineFindings,
+    cached.inlineFindings,
+  );
+  const skippedFindings = cleanFindings(
+    body.skippedFindings,
+    cached.skippedFindings,
+  );
   const githubToken = await resolveGithubToken(body, githubTokenStore);
   const posted = await postReview({
     pullRequest: cached.pullRequest,
@@ -219,13 +301,38 @@ async function handlePostReview(reviewId, request, response, maxBodyBytes, githu
     githubToken,
   });
 
+  cached.githubReviewId = posted.githubReviewId;
+
   sendJson(response, 200, posted);
+}
+
+async function handleReviewThreads(reviewId, response, githubTokenStore) {
+  const cached = getCachedReview(reviewId);
+  if (!cached) {
+    sendJson(response, 404, { error: "Review expired or unknown" });
+    return;
+  }
+
+  if (!cached.githubReviewId) {
+    sendJson(response, 409, { error: "Review has not been posted yet" });
+    return;
+  }
+
+  const githubToken = await resolveGithubToken({}, githubTokenStore);
+  const threads = await fetchReviewThreads(
+    cached.pullRequest,
+    cached.githubReviewId,
+    githubToken,
+  );
+
+  sendJson(response, 200, { threads });
 }
 
 async function serveStatic(pathname, response) {
   let relativePath;
   try {
-    relativePath = pathname === "/" ? "index.html" : decodeURIComponent(pathname.slice(1));
+    relativePath =
+      pathname === "/" ? "index.html" : decodeURIComponent(pathname.slice(1));
   } catch {
     sendJson(response, 400, { error: "Invalid path" });
     return;
@@ -298,7 +405,8 @@ function cleanFinding(finding) {
 }
 
 async function resolveGithubToken(body, githubTokenStore) {
-  const requestToken = typeof body.githubToken === "string" ? body.githubToken.trim() : "";
+  const requestToken =
+    typeof body.githubToken === "string" ? body.githubToken.trim() : "";
   if (requestToken) {
     return requestToken;
   }
@@ -336,7 +444,8 @@ async function getGithubTokenStatus(githubTokenStore) {
   }
 
   const status = await githubTokenStore.status();
-  const storedGithubTokenAvailable = status.secureStorageAvailable && status.hasStoredGithubToken;
+  const storedGithubTokenAvailable =
+    status.secureStorageAvailable && status.hasStoredGithubToken;
 
   return {
     canPersistGithubToken: status.secureStorageAvailable,
@@ -385,7 +494,12 @@ function readJson(request, maxBodyBytes) {
       bytes += Buffer.byteLength(chunk, "utf8");
 
       if (bytes > maxBodyBytes) {
-        fail(new HttpError(413, `Request body too large. Max ${maxBodyBytes} bytes.`));
+        fail(
+          new HttpError(
+            413,
+            `Request body too large. Max ${maxBodyBytes} bytes.`,
+          ),
+        );
         return;
       }
 
@@ -427,7 +541,8 @@ function securityHeaders() {
     "Content-Security-Policy":
       "default-src 'self'; connect-src 'self'; img-src 'self' data:; script-src 'self'; style-src 'self'",
     "Cross-Origin-Opener-Policy": "same-origin",
-    "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=()",
+    "Permissions-Policy":
+      "camera=(), microphone=(), geolocation=(), payment=()",
     "Referrer-Policy": "no-referrer",
     "X-Content-Type-Options": "nosniff",
   };
@@ -448,7 +563,10 @@ function mimeType(filePath) {
 }
 
 function isLoopbackRequest(request) {
-  return isLoopbackHost(request.headers.host) && isAllowedOrigin(request.headers.origin);
+  return (
+    isLoopbackHost(request.headers.host) &&
+    isAllowedOrigin(request.headers.origin)
+  );
 }
 
 function isLoopbackHost(host) {

@@ -22,13 +22,17 @@ export function parseRepositoryRef(value) {
     };
   }
 
-  throw new Error(`Invalid repo ref "${value}". Use a GitHub repo URL or owner/repo.`);
+  throw new Error(
+    `Invalid repo ref "${value}". Use a GitHub repo URL or owner/repo.`,
+  );
 }
 
 export function parsePullRequestRef(value) {
   const url = parseGitHubUrl(value);
   if (url) {
-    const [owner, repo, segment, number] = url.pathname.split("/").filter(Boolean);
+    const [owner, repo, segment, number] = url.pathname
+      .split("/")
+      .filter(Boolean);
 
     if (owner && repo && segment === "pull" && /^\d+$/.test(number)) {
       return {
@@ -48,12 +52,16 @@ export function parsePullRequestRef(value) {
     };
   }
 
-  throw new Error(`Invalid PR ref "${value}". Use a GitHub pull URL or owner/repo#number.`);
+  throw new Error(
+    `Invalid PR ref "${value}". Use a GitHub pull URL or owner/repo#number.`,
+  );
 }
 
 function parseGitHubUrl(value) {
   const trimmed = value.trim();
-  const candidate = trimmed.startsWith("github.com/") ? `https://${trimmed}` : trimmed;
+  const candidate = trimmed.startsWith("github.com/")
+    ? `https://${trimmed}`
+    : trimmed;
 
   try {
     const url = new URL(candidate);
@@ -99,7 +107,9 @@ export async function fetchPullRequestContext(ref, token) {
 }
 
 export async function fetchOpenPullRequestsForRepo(ref, token) {
-  const repository = await githubRequest(`/repos/${ref.owner}/${ref.repo}`, { token });
+  const repository = await githubRequest(`/repos/${ref.owner}/${ref.repo}`, {
+    token,
+  });
   const viewer = await fetchViewer(token);
   const pulls = await fetchOpenPullRequestPages(ref, token);
 
@@ -113,11 +123,16 @@ export async function fetchOpenPullRequestsForRepo(ref, token) {
       defaultBranch: repository.default_branch,
     },
     viewer,
-    pullRequests: pulls.map((pullRequest) => normalizePullRequestSummary(pullRequest, viewer)),
+    pullRequests: pulls.map((pullRequest) =>
+      normalizePullRequestSummary(pullRequest, viewer),
+    ),
   };
 }
 
-export async function fetchPullRequestsForBranch({ owner, repo, headOwner, branch }, token) {
+export async function fetchPullRequestsForBranch(
+  { owner, repo, headOwner, branch },
+  token,
+) {
   const head = encodeURIComponent(`${headOwner}:${branch}`);
   const pulls = await githubRequest(
     `/repos/${owner}/${repo}/pulls?state=open&head=${head}&per_page=10`,
@@ -151,11 +166,16 @@ async function fetchViewer(token) {
 }
 
 function normalizePullRequestSummary(pullRequest, viewer) {
-  const requestedReviewers = pullRequest.requested_reviewers.map((reviewer) => reviewer.login);
+  const requestedReviewers = pullRequest.requested_reviewers.map(
+    (reviewer) => reviewer.login,
+  );
   const requestedTeams = pullRequest.requested_teams.map((team) => team.slug);
-  const requestedFromViewer = viewer ? requestedReviewers.includes(viewer.login) : false;
+  const requestedFromViewer = viewer
+    ? requestedReviewers.includes(viewer.login)
+    : false;
   const needsReview =
-    !pullRequest.draft && (requestedReviewers.length > 0 || requestedTeams.length > 0);
+    !pullRequest.draft &&
+    (requestedReviewers.length > 0 || requestedTeams.length > 0);
 
   return {
     number: pullRequest.number,
@@ -171,11 +191,20 @@ function normalizePullRequestSummary(pullRequest, viewer) {
     requestedReviewers,
     requestedTeams,
     requestedFromViewer,
-    reviewState: pullRequest.draft ? "draft" : needsReview ? "needs_review" : "open",
+    reviewState: pullRequest.draft
+      ? "draft"
+      : needsReview
+        ? "needs_review"
+        : "open",
   };
 }
 
-export async function createPullRequestReview(pullRequest, findings, token, body) {
+export async function createPullRequestReview(
+  pullRequest,
+  findings,
+  token,
+  body,
+) {
   requireToken(token, "--post requires GITHUB_TOKEN");
 
   const comments = findings.map((finding) => ({
@@ -185,7 +214,7 @@ export async function createPullRequestReview(pullRequest, findings, token, body
     body: formatInlineComment(finding),
   }));
 
-  await githubRequest(
+  const review = await githubRequest(
     `/repos/${pullRequest.owner}/${pullRequest.repo}/pulls/${pullRequest.number}/reviews`,
     {
       token,
@@ -198,6 +227,107 @@ export async function createPullRequestReview(pullRequest, findings, token, body
       },
     },
   );
+
+  return { reviewId: review.id };
+}
+
+const REVIEW_THREADS_QUERY = `
+  query ($owner: String!, $repo: String!, $number: Int!, $cursor: String) {
+    repository(owner: $owner, name: $repo) {
+      pullRequest(number: $number) {
+        reviewThreads(first: 100, after: $cursor) {
+          pageInfo {
+            hasNextPage
+            endCursor
+          }
+          nodes {
+            id
+            isResolved
+            resolvedBy {
+              login
+            }
+            comments(first: 1) {
+              nodes {
+                path
+                line
+                originalLine
+                pullRequestReview {
+                  databaseId
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+`;
+
+export async function fetchReviewThreads(pullRequest, reviewId, token) {
+  requireToken(token, "Fetching review threads requires a GitHub token");
+
+  const nodes = [];
+  let cursor = null;
+
+  do {
+    const data = await githubGraphql(
+      REVIEW_THREADS_QUERY,
+      {
+        owner: pullRequest.owner,
+        repo: pullRequest.repo,
+        number: pullRequest.number,
+        cursor,
+      },
+      token,
+    );
+
+    const connection = data?.repository?.pullRequest?.reviewThreads;
+    if (!connection) {
+      break;
+    }
+
+    nodes.push(...connection.nodes);
+    cursor = connection.pageInfo.hasNextPage
+      ? connection.pageInfo.endCursor
+      : null;
+  } while (cursor);
+
+  return normalizeReviewThreads(nodes, reviewId);
+}
+
+export function normalizeReviewThreads(nodes, reviewId) {
+  return nodes
+    .filter(
+      (thread) =>
+        thread.comments.nodes[0]?.pullRequestReview?.databaseId === reviewId,
+    )
+    .map((thread) => {
+      const comment = thread.comments.nodes[0];
+
+      return {
+        threadId: thread.id,
+        isResolved: thread.isResolved,
+        resolvedBy: thread.resolvedBy?.login ?? null,
+        path: comment.path,
+        line: comment.line ?? comment.originalLine,
+      };
+    });
+}
+
+async function githubGraphql(query, variables, token) {
+  const result = await githubRequest("/graphql", {
+    token,
+    method: "POST",
+    body: { query, variables },
+  });
+
+  if (result?.errors?.length) {
+    throw new Error(
+      `GitHub GraphQL request failed: ${result.errors[0].message}`,
+    );
+  }
+
+  return result?.data ?? null;
 }
 
 export async function postIssueComment(pullRequest, body, token) {
@@ -329,12 +459,16 @@ async function formatGitHubError(response, method, path) {
   const retryAfter = response.headers.get("retry-after");
   const rateLimitRemaining = response.headers.get("x-ratelimit-remaining");
   const rateLimitReset = response.headers.get("x-ratelimit-reset");
-  const details = [`GitHub ${method} ${path} failed: ${response.status} ${text}`];
+  const details = [
+    `GitHub ${method} ${path} failed: ${response.status} ${text}`,
+  ];
 
   if (retryAfter) {
     details.push(`Retry after ${retryAfter} seconds.`);
   } else if (rateLimitRemaining === "0" && rateLimitReset) {
-    details.push(`Rate limit resets at ${new Date(Number(rateLimitReset) * 1000).toISOString()}.`);
+    details.push(
+      `Rate limit resets at ${new Date(Number(rateLimitReset) * 1000).toISOString()}.`,
+    );
   }
 
   return details.join(" ");
@@ -380,7 +514,9 @@ export function parseChangedLines(patch) {
 }
 
 function formatInlineComment(finding) {
-  const suggestion = finding.suggestion ? `\n\nSuggested direction:\n\n${finding.suggestion}` : "";
+  const suggestion = finding.suggestion
+    ? `\n\nSuggested direction:\n\n${finding.suggestion}`
+    : "";
   return `**${finding.severity}**: ${finding.comment}${suggestion}`;
 }
 

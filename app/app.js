@@ -5,7 +5,11 @@ const state = {
   pullRequest: null,
   repoPullRequests: [],
   selectedFileIndex: 0,
+  resolvedThreadIds: new Set(),
+  threadPollTimer: null,
 };
+
+const THREAD_POLL_INTERVAL_MS = 10 * 60 * 1000;
 
 let authToken = "";
 
@@ -164,7 +168,9 @@ function renderGithubTokenStatus(status) {
 
   elements.saveGithubTokenButton.disabled = !status.canPersistGithubToken;
   elements.clearGithubTokenButton.disabled = !status.hasStoredGithubToken;
-  elements.githubToken.placeholder = status.hasGithubToken ? "token available" : "optional";
+  elements.githubToken.placeholder = status.hasGithubToken
+    ? "token available"
+    : "optional";
 
   if (status.hasStoredGithubToken && status.canPersistGithubToken) {
     elements.githubTokenStatus.textContent = "Saved token";
@@ -205,7 +211,10 @@ async function readGitWorkspace() {
     });
 
     renderGitState(result);
-    setBusy(false, result.pullRequests.length > 0 ? "Local PR found" : "Git read");
+    setBusy(
+      false,
+      result.pullRequests.length > 0 ? "Local PR found" : "Git read",
+    );
   } catch (error) {
     renderGitError(error.message);
     setBusy(false, error.message);
@@ -271,8 +280,14 @@ async function runReview() {
       : `${result.review.findings.length} findings, ${state.files.length} files`;
 
     renderFindingList([
-      ...result.inlineFindings.map((finding) => ({ ...finding, kind: "inline" })),
-      ...result.skippedFindings.map((finding) => ({ ...finding, kind: "manual" })),
+      ...result.inlineFindings.map((finding) => ({
+        ...finding,
+        kind: "inline",
+      })),
+      ...result.skippedFindings.map((finding) => ({
+        ...finding,
+        kind: "manual",
+      })),
     ]);
     renderFileViewer(state.files);
     refreshFixPrompt();
@@ -308,8 +323,91 @@ async function postSelected() {
       false,
       `Posted ${result.inlineComments} comments and ${result.summaryComments} summary`,
     );
+
+    if (result.githubReviewId) {
+      startThreadPolling();
+    }
   } catch (error) {
     setBusy(false, error.message);
+  }
+}
+
+function startThreadPolling() {
+  stopThreadPolling();
+  state.resolvedThreadIds = new Set();
+
+  if ("Notification" in window && Notification.permission === "default") {
+    Notification.requestPermission();
+  }
+
+  state.threadPollTimer = setInterval(
+    pollReviewThreads,
+    THREAD_POLL_INTERVAL_MS,
+  );
+}
+
+function stopThreadPolling() {
+  if (state.threadPollTimer) {
+    clearInterval(state.threadPollTimer);
+    state.threadPollTimer = null;
+  }
+}
+
+async function pollReviewThreads() {
+  if (!state.reviewId) {
+    stopThreadPolling();
+    return;
+  }
+
+  let threads;
+  try {
+    const result = await requestJson(`/api/reviews/${state.reviewId}/threads`);
+    threads = result.threads;
+  } catch {
+    return;
+  }
+
+  for (const thread of threads) {
+    if (!thread.isResolved || state.resolvedThreadIds.has(thread.threadId)) {
+      continue;
+    }
+
+    state.resolvedThreadIds.add(thread.threadId);
+    markFindingResolved(thread);
+    notifyThreadResolved(thread);
+  }
+
+  if (threads.length > 0 && threads.every((thread) => thread.isResolved)) {
+    stopThreadPolling();
+  }
+}
+
+function markFindingResolved(thread) {
+  const node = elements.commentsPanel.querySelector(
+    `.finding[data-path="${CSS.escape(thread.path)}"][data-line="${CSS.escape(String(thread.line))}"]`,
+  );
+
+  if (!node) {
+    return;
+  }
+
+  node.classList.add("resolved");
+  const badge = node.querySelector(".finding-resolved");
+  badge.textContent = thread.resolvedBy
+    ? `Resolved by ${thread.resolvedBy}`
+    : "Resolved";
+  badge.hidden = false;
+}
+
+function notifyThreadResolved(thread) {
+  const message = thread.resolvedBy
+    ? `${thread.path}:${thread.line} resolved by ${thread.resolvedBy}`
+    : `${thread.path}:${thread.line} resolved`;
+
+  elements.statusText.textContent = message;
+
+  if ("Notification" in window && Notification.permission === "granted") {
+    new Notification("Review comment resolved", { body: message });
   }
 }
 
@@ -386,7 +484,9 @@ function renderGitState(result) {
   elements.workspace.value = result.root || elements.workspace.value;
 
   const branch = document.createElement("strong");
-  branch.textContent = result.branch ? `Branch ${result.branch}` : "Detached HEAD";
+  branch.textContent = result.branch
+    ? `Branch ${result.branch}`
+    : "Detached HEAD";
 
   const status = document.createElement("p");
   status.textContent = `${result.changedFiles} changed files / ${result.isDirty ? "dirty" : "clean"}`;
@@ -471,7 +571,8 @@ function renderFindingList(findings) {
     node.dataset.line = String(finding.line);
     node.dataset.kind = finding.kind;
     node.dataset.severity = finding.severity;
-    node.querySelector(".finding-location").textContent = `${finding.path}:${finding.line}`;
+    node.querySelector(".finding-location").textContent =
+      `${finding.path}:${finding.line}`;
     const severity = node.querySelector(".finding-severity");
     severity.value = finding.severity;
     severity.addEventListener("change", () => {
@@ -486,7 +587,10 @@ function renderFindingList(findings) {
 
 function renderFileViewer(files) {
   elements.filesPanel.replaceChildren();
-  state.selectedFileIndex = Math.min(state.selectedFileIndex, Math.max(files.length - 1, 0));
+  state.selectedFileIndex = Math.min(
+    state.selectedFileIndex,
+    Math.max(files.length - 1, 0),
+  );
 
   if (files.length === 0) {
     const empty = document.createElement("p");
@@ -643,7 +747,9 @@ function buildFixPrompt(findings) {
   ];
 
   findings.forEach((finding, index) => {
-    lines.push(`${index + 1}. ${finding.path}:${finding.line} [${finding.severity}]`);
+    lines.push(
+      `${index + 1}. ${finding.path}:${finding.line} [${finding.severity}]`,
+    );
     lines.push(finding.comment);
     if (finding.suggestion) {
       lines.push(`Suggested direction: ${finding.suggestion}`);
@@ -664,6 +770,8 @@ function selectTab(name) {
 }
 
 function clearResults() {
+  stopThreadPolling();
+  state.resolvedThreadIds = new Set();
   state.files = [];
   state.reviewId = null;
   state.pullRequest = null;
@@ -676,9 +784,15 @@ function clearResults() {
   elements.counts.textContent = "";
   elements.promptPanel.textContent = "Run a review to generate a fix prompt.";
   elements.commentsPanel.replaceChildren();
-  renderEmptyMessage(elements.commentsPanel, "Run a review to see findings here.");
+  renderEmptyMessage(
+    elements.commentsPanel,
+    "Run a review to see findings here.",
+  );
   elements.filesPanel.replaceChildren();
-  renderEmptyMessage(elements.filesPanel, "Run a review to inspect changed files.");
+  renderEmptyMessage(
+    elements.filesPanel,
+    "Run a review to inspect changed files.",
+  );
 }
 
 function renderEmptyMessage(container, message) {
@@ -704,7 +818,9 @@ function setBusy(isBusy, message) {
 
 function isRepoRef(value) {
   const trimmed = value.trim();
-  return Boolean(trimmed) && !trimmed.includes("/pull/") && !trimmed.includes("#");
+  return (
+    Boolean(trimmed) && !trimmed.includes("/pull/") && !trimmed.includes("#")
+  );
 }
 
 async function requestJson(path, options = {}) {

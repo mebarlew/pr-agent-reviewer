@@ -628,11 +628,25 @@ button.primary:active:not(:disabled) {
     inset 3px 0 0 var(--amber);
 }
 
+.finding.resolved {
+  opacity: 0.65;
+  box-shadow:
+    var(--recessed-shadow),
+    inset 3px 0 0 var(--green);
+}
+
 .finding-head {
   display: grid;
-  grid-template-columns: 1fr 170px;
+  grid-template-columns: 1fr 170px auto;
   gap: 12px;
   align-items: center;
+}
+
+.finding-resolved {
+  font-size: 11px;
+  color: var(--green);
+  font-weight: 500;
+  white-space: nowrap;
 }
 
 .finding textarea,

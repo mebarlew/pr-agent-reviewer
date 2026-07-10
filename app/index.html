@@ -43,7 +43,12 @@
             <summary>Advanced</summary>
             <label>
               Workspace
-              <input id="workspace" name="workspace" autocomplete="off" required />
+              <input
+                id="workspace"
+                name="workspace"
+                autocomplete="off"
+                required
+              />
             </label>
             <button id="readGitButton" type="button">Detect local PR</button>
             <div class="git-panel" id="gitPanel">
@@ -60,10 +65,14 @@
               />
             </label>
             <div class="token-actions">
-              <button id="saveGithubTokenButton" type="button">Save token</button>
+              <button id="saveGithubTokenButton" type="button">
+                Save token
+              </button>
               <button id="clearGithubTokenButton" type="button">Forget</button>
             </div>
-            <div class="token-status" id="githubTokenStatus">Token not checked</div>
+            <div class="token-status" id="githubTokenStatus">
+              Token not checked
+            </div>
           </details>
 
           <div class="repo-picker">
@@ -79,11 +88,15 @@
             <button id="loadRepoButton" type="button">Show PRs</button>
           </div>
 
-          <div class="repo-meta" id="repoMeta">Paste a PR link or browse a repo.</div>
+          <div class="repo-meta" id="repoMeta">
+            Paste a PR link or browse a repo.
+          </div>
           <div class="repo-pr-list" id="repoPrList"></div>
 
           <div class="actions">
-            <button class="primary" id="runButton" type="submit">Run review</button>
+            <button class="primary" id="runButton" type="submit">
+              Run review
+            </button>
           </div>
         </form>
 
@@ -97,8 +110,12 @@
           </div>
 
           <div class="tabs">
-            <button class="tab active" type="button" data-tab="files">Files</button>
-            <button class="tab" type="button" data-tab="prompt">Fix Prompt</button>
+            <button class="tab active" type="button" data-tab="files">
+              Files
+            </button>
+            <button class="tab" type="button" data-tab="prompt">
+              Fix Prompt
+            </button>
           </div>
 
           <div class="tab-panel active" id="filesPanel">
@@ -123,8 +140,12 @@
           </div>
 
           <div class="result-actions">
-            <button id="copyPromptButton" type="button" disabled>Copy fix prompt</button>
-            <button id="postButton" type="button" disabled>Post comments</button>
+            <button id="copyPromptButton" type="button" disabled>
+              Copy fix prompt
+            </button>
+            <button id="postButton" type="button" disabled>
+              Post comments
+            </button>
           </div>
         </aside>
       </section>
@@ -145,9 +166,14 @@
             <option value="test">test</option>
             <option value="question">question</option>
           </select>
+          <span class="finding-resolved" hidden></span>
         </div>
         <textarea class="finding-comment" rows="4"></textarea>
-        <textarea class="finding-suggestion" rows="3" placeholder="Suggested direction"></textarea>
+        <textarea
+          class="finding-suggestion"
+          rows="3"
+          placeholder="Suggested direction"
+        ></textarea>
       </article>
     </template>
 
