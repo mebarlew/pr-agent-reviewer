@@ -12,21 +12,27 @@ test("parseGitHubRemoteUrl supports GitHub SSH remotes", () => {
 });
 
 test("parseGitHubRemoteUrl supports GitHub HTTPS remotes", () => {
-  assert.deepEqual(parseGitHubRemoteUrl("https://github.com/acme/widgets.git"), {
-    host: "github.com",
-    owner: "acme",
-    repo: "widgets",
-    fullName: "acme/widgets",
-  });
+  assert.deepEqual(
+    parseGitHubRemoteUrl("https://github.com/acme/widgets.git"),
+    {
+      host: "github.com",
+      owner: "acme",
+      repo: "widgets",
+      fullName: "acme/widgets",
+    },
+  );
 });
 
 test("parseGitHubRemoteUrl supports dotted repo names", () => {
-  assert.deepEqual(parseGitHubRemoteUrl("git@github.com:acme/widgets.api.git"), {
-    host: "github.com",
-    owner: "acme",
-    repo: "widgets.api",
-    fullName: "acme/widgets.api",
-  });
+  assert.deepEqual(
+    parseGitHubRemoteUrl("git@github.com:acme/widgets.api.git"),
+    {
+      host: "github.com",
+      owner: "acme",
+      repo: "widgets.api",
+      fullName: "acme/widgets.api",
+    },
+  );
 });
 
 test("parseRemoteList keeps fetch remotes with parsed GitHub metadata", () => {

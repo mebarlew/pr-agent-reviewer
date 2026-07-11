@@ -12,8 +12,17 @@ export async function readGitState(workspace, githubToken) {
       gitOptional(root, ["rev-parse", "HEAD"]),
       git(root, ["status", "--short"]),
       git(root, ["remote", "-v"]),
-      gitOptional(root, ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"]),
-      gitOptional(root, ["symbolic-ref", "--short", "refs/remotes/origin/HEAD"]),
+      gitOptional(root, [
+        "rev-parse",
+        "--abbrev-ref",
+        "--symbolic-full-name",
+        "@{u}",
+      ]),
+      gitOptional(root, [
+        "symbolic-ref",
+        "--short",
+        "refs/remotes/origin/HEAD",
+      ]),
     ]);
   const remotes = parseRemoteList(remoteOutput);
   const github = inferGitHubRepo(remotes);

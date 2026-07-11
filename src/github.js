@@ -497,7 +497,7 @@ export function parseChangedLines(patch) {
       continue;
     }
 
-    if (line.startsWith("\\ No newline")) {
+    if (line.startsWith(String.raw`\ No newline`)) {
       continue;
     }
 

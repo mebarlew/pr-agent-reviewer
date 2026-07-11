@@ -1,0 +1,10 @@
+{
+  "entry": [
+    "electron/preload.cjs",
+    "scripts/electron-smoke.cjs",
+    "app/app.js",
+    "test/*.test.js",
+    "fixtures/*.js"
+  ],
+  "project": ["**/*.{js,cjs}"]
+}

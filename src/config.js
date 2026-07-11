@@ -81,8 +81,8 @@ function mergeProvider(defaultProvider, userProvider = {}) {
     ...userProvider,
     args: userProvider.args ?? defaultProvider.args ?? [],
     env: {
-      ...(defaultProvider.env ?? {}),
-      ...(userProvider.env ?? {}),
+      ...defaultProvider.env,
+      ...userProvider.env,
     },
   };
 }

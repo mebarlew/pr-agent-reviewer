@@ -1,5 +1,3 @@
-import { DEFAULT_PROVIDER_TIMEOUT_MS } from "../config.js";
-
 const PASS_THROUGH_ENV_KEYS = [
   "APPDATA",
   "ComSpec",
@@ -22,8 +20,6 @@ const PASS_THROUGH_ENV_KEYS = [
   "WINDIR",
 ];
 
-export { DEFAULT_PROVIDER_TIMEOUT_MS };
-
 export function buildProviderEnv(extraEnv = {}) {
   const env = {};
 
@@ -38,3 +34,5 @@ export function buildProviderEnv(extraEnv = {}) {
     ...extraEnv,
   };
 }
+
+export { DEFAULT_PROVIDER_TIMEOUT_MS } from "../config.js";

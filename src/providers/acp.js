@@ -33,31 +33,43 @@ export async function runAcpProvider(provider, { prompt, workspace }) {
   });
 
   try {
-    const init = await client.request("initialize", {
-      protocolVersion: 1,
-      clientCapabilities: {},
-      clientInfo: {
-        name: "pr-agent-reviewer",
-        title: "PR Agent Reviewer",
-        version: "0.1.0",
+    const init = await client.request(
+      "initialize",
+      {
+        protocolVersion: 1,
+        clientCapabilities: {},
+        clientInfo: {
+          name: "pr-agent-reviewer",
+          title: "PR Agent Reviewer",
+          version: "0.1.0",
+        },
       },
-    }, timeoutMs);
+      timeoutMs,
+    );
 
     if (provider.authMethod) {
-      await client.request("authenticate", { methodId: provider.authMethod }, timeoutMs);
+      await client.request(
+        "authenticate",
+        { methodId: provider.authMethod },
+        timeoutMs,
+      );
     }
 
     const session = await createSession(client, init, workspace, timeoutMs);
 
-    const result = await client.request("session/prompt", {
-      sessionId: session.sessionId,
-      prompt: [
-        {
-          type: "text",
-          text: prompt,
-        },
-      ],
-    }, timeoutMs);
+    const result = await client.request(
+      "session/prompt",
+      {
+        sessionId: session.sessionId,
+        prompt: [
+          {
+            type: "text",
+            text: prompt,
+          },
+        ],
+      },
+      timeoutMs,
+    );
 
     return {
       text: chunks.join(""),
@@ -71,11 +83,17 @@ export async function runAcpProvider(provider, { prompt, workspace }) {
 }
 
 function collectText(update, chunks) {
-  if (update.sessionUpdate === "agent_message_chunk" && update.content?.type === "text") {
+  if (
+    update.sessionUpdate === "agent_message_chunk" &&
+    update.content?.type === "text"
+  ) {
     chunks.push(update.content.text);
   }
 
-  if (update.sessionUpdate === "tool_call_update" && Array.isArray(update.content)) {
+  if (
+    update.sessionUpdate === "tool_call_update" &&
+    Array.isArray(update.content)
+  ) {
     for (const item of update.content) {
       if (item.type === "content" && item.content?.type === "text") {
         chunks.push(item.content.text);
@@ -103,10 +121,14 @@ function chooseRejectOutcome(options = []) {
 
 async function createSession(client, init, workspace, timeoutMs) {
   try {
-    return await client.request("session/new", {
-      cwd: workspace,
-      mcpServers: [],
-    }, timeoutMs);
+    return await client.request(
+      "session/new",
+      {
+        cwd: workspace,
+        mcpServers: [],
+      },
+      timeoutMs,
+    );
   } catch (error) {
     if (!Array.isArray(init.authMethods) || init.authMethods.length === 0) {
       throw error;
@@ -115,6 +137,7 @@ async function createSession(client, init, workspace, timeoutMs) {
     const methods = init.authMethods.map((method) => method.id).join(", ");
     throw new Error(
       `${error.message}\nProvider may require authentication. Set "authMethod" for this provider. Available: ${methods}`,
+      { cause: error },
     );
   }
 }

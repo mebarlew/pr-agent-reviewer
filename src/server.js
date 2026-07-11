@@ -1,6 +1,11 @@
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
-import { extname, isAbsolute, join, relative, resolve } from "node:path";
+import {
+  extname,
+  isAbsolute,
+  relative,
+  resolve as resolvePath,
+} from "node:path";
 import { cwd } from "node:process";
 import { fileURLToPath } from "node:url";
 import { randomUUID, timingSafeEqual } from "node:crypto";
@@ -15,7 +20,7 @@ import {
 import { normalizeFinding } from "./review/schema.js";
 import { postReview, runReview } from "./review/service.js";
 
-const appRoot = resolve(fileURLToPath(new URL("../app", import.meta.url)));
+const appRoot = resolvePath(fileURLToPath(new URL("../app", import.meta.url)));
 const reviews = new Map();
 const DEFAULT_MAX_BODY_BYTES = 1024 * 1024;
 const MAX_CACHED_REVIEWS = 50;
@@ -316,7 +321,7 @@ async function handleReviewThreads(
   const pullRequest = parsePullRequestRef(
     requiredString(body.prRef, "prRef is required"),
   );
-  if (!Number.isInteger(body.reviewId)) {
+  if (!Number.isSafeInteger(body.reviewId)) {
     sendJson(response, 400, { error: "reviewId must be an integer" });
     return;
   }
@@ -341,7 +346,7 @@ async function serveStatic(pathname, response) {
     return;
   }
 
-  const filePath = resolve(appRoot, relativePath);
+  const filePath = resolvePath(appRoot, relativePath);
   const staticRelativePath = relative(appRoot, filePath);
 
   if (staticRelativePath.startsWith("..") || isAbsolute(staticRelativePath)) {
@@ -474,7 +479,7 @@ function requiredString(value, message) {
 }
 
 function readJson(request, maxBodyBytes) {
-  return new Promise((resolveBody, reject) => {
+  return new Promise((resolve, reject) => {
     let raw = "";
     let bytes = 0;
     let settled = false;
@@ -516,7 +521,7 @@ function readJson(request, maxBodyBytes) {
       settled = true;
 
       try {
-        resolveBody(raw ? JSON.parse(raw) : {});
+        resolve(raw ? JSON.parse(raw) : {});
       } catch (error) {
         reject(new HttpError(400, `Invalid JSON body: ${error.message}`));
       }
@@ -598,12 +603,7 @@ function isAllowedOrigin(origin) {
 }
 
 function isLoopbackHostname(hostname) {
-  return (
-    hostname === "localhost" ||
-    hostname === "127.0.0.1" ||
-    hostname === "::1" ||
-    hostname === "[::1]"
-  );
+  return ["localhost", "127.0.0.1", "::1", "[::1]"].includes(hostname);
 }
 
 function isAuthorized(request, authToken) {
@@ -623,7 +623,7 @@ function isAuthorized(request, authToken) {
 function hasJsonContentType(request) {
   const header = request.headers["content-type"];
   const value = Array.isArray(header) ? header[0] : header;
-  return value?.toLowerCase().split(";")[0].trim() === "application/json";
+  return value?.toLowerCase().split(";", 1)[0].trim() === "application/json";
 }
 
 class HttpError extends Error {

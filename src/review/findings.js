@@ -1,4 +1,4 @@
-import { normalizeFinding, stringValue } from "./schema.js";
+import { normalizeFinding } from "./schema.js";
 
 export function parseAgentReview(text) {
   const parsed = JSON.parse(extractJson(text));

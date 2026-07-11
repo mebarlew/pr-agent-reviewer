@@ -134,7 +134,7 @@ export class JsonRpcStdioClient extends EventEmitter {
     let message;
     try {
       message = JSON.parse(line);
-    } catch (error) {
+    } catch {
       this.emit("protocolError", new Error(`Invalid JSON-RPC line: ${line}`));
       return;
     }

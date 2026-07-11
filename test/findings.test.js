@@ -85,8 +85,12 @@ test("buildReviewMarkdown includes inline and skipped findings", () => {
     providerName: "codex",
     pullRequest: { htmlUrl: "https://github.com/acme/widgets/pull/42" },
     review: { summary: "Looks risky." },
-    inlineFindings: [{ path: "src/app.js", line: 12, severity: "bug", comment: "Inline" }],
-    skippedFindings: [{ path: "src/app.js", line: 20, severity: "test", comment: "Skipped" }],
+    inlineFindings: [
+      { path: "src/app.js", line: 12, severity: "bug", comment: "Inline" },
+    ],
+    skippedFindings: [
+      { path: "src/app.js", line: 20, severity: "test", comment: "Skipped" },
+    ],
   });
 
   assert.match(markdown, /AI PR review \(codex\)/);

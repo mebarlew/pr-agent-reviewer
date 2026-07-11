@@ -108,25 +108,13 @@ if (!app.requestSingleInstanceLock()) {
     showMainWindow();
   });
 
-  app.whenReady().then(async () => {
-    githubTokenStore = createGithubTokenStore({ app, safeStorage });
-
-    ipcMain.handle("auth-token", () => authToken);
-    ipcMain.handle("show-window", () => showMainWindow());
-
-    session.defaultSession.setPermissionRequestHandler(
-      (_webContents, _permission, callback) => {
-        callback(false);
-      },
-    );
-
-    await createWindow();
-    createTray();
-
-    app.on("activate", async () => {
-      await showMainWindow();
+  app
+    .whenReady()
+    .then(onAppReady)
+    .catch((error) => {
+      console.error(error);
+      app.exit(1);
     });
-  });
 }
 
 // Closing the window hides it to the tray; the app only exits via
@@ -142,6 +130,26 @@ app.on("before-quit", () => {
     serverUrl = null;
   }
 });
+
+async function onAppReady() {
+  githubTokenStore = createGithubTokenStore({ app, safeStorage });
+
+  ipcMain.handle("auth-token", () => authToken);
+  ipcMain.handle("show-window", () => showMainWindow());
+
+  session.defaultSession.setPermissionRequestHandler(
+    (_webContents, _permission, callback) => {
+      callback(false);
+    },
+  );
+
+  await createWindow();
+  createTray();
+
+  app.on("activate", async () => {
+    await showMainWindow();
+  });
+}
 
 function createTray() {
   tray = new Tray(join(__dirname, "tray-icon.png"));

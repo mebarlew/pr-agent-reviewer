@@ -63,7 +63,7 @@ test("parsePullRequestRef accepts shorthand refs", () => {
 });
 
 test("parseChangedLines indexes added lines in each hunk", () => {
-  const changed = parseChangedLines(`@@ -1,4 +1,5 @@
+  const changed = parseChangedLines(String.raw`@@ -1,4 +1,5 @@
  context
 -old
 +new
@@ -71,7 +71,7 @@ test("parseChangedLines indexes added lines in each hunk", () => {
 @@ -20,2 +21,3 @@
 +added
  tail
-\\ No newline at end of file`);
+\ No newline at end of file`);
 
   assert.deepEqual([...changed], [2, 21]);
 });
@@ -84,12 +84,15 @@ test("githubRequest sends an abort signal for request timeouts", async () => {
       assert.ok(options.signal);
       assert.equal(options.signal.aborted, false);
 
-      return new Response(JSON.stringify({ ok: true }), {
-        status: 200,
-        headers: {
-          "Content-Type": "application/json",
+      return Response.json(
+        { ok: true },
+        {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json",
+          },
         },
-      });
+      );
     };
 
     assert.deepEqual(await githubRequest("/user", { timeoutMs: 1000 }), {
@@ -117,12 +120,15 @@ test("createPullRequestReview returns the created review id", async () => {
       assert.ok(String(url).endsWith("/repos/acme/widgets/pulls/42/reviews"));
       assert.equal(options.method, "POST");
 
-      return new Response(JSON.stringify({ id: 987654 }), {
-        status: 200,
-        headers: {
-          "Content-Type": "application/json",
+      return Response.json(
+        { id: 987_654 },
+        {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json",
+          },
         },
-      });
+      );
     };
 
     const result = await createPullRequestReview(
@@ -132,7 +138,7 @@ test("createPullRequestReview returns the created review id", async () => {
       "Summary",
     );
 
-    assert.deepEqual(result, { reviewId: 987654 });
+    assert.deepEqual(result, { reviewId: 987_654 });
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -277,7 +283,7 @@ test("fetchReviewThreads pages through the GraphQL connection", async () => {
       assert.ok(String(url).endsWith("/graphql"));
       cursors.push(JSON.parse(options.body).variables.cursor);
 
-      return new Response(JSON.stringify(pages.shift()), {
+      return Response.json(pages.shift(), {
         status: 200,
         headers: {
           "Content-Type": "application/json",

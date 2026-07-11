@@ -420,9 +420,9 @@ function notifyThreadResolved(thread) {
     const notification = new Notification("Review comment resolved", {
       body: message,
     });
-    notification.onclick = () => {
+    notification.addEventListener("click", () => {
       window.prAgent?.showWindow?.();
-    };
+    });
   }
 }
 
@@ -764,8 +764,8 @@ function buildFixPrompt(findings) {
   findings.forEach((finding, index) => {
     lines.push(
       `${index + 1}. ${finding.path}:${finding.line} [${finding.severity}]`,
+      finding.comment,
     );
-    lines.push(finding.comment);
     if (finding.suggestion) {
       lines.push(`Suggested direction: ${finding.suggestion}`);
     }

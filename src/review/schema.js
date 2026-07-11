@@ -1,4 +1,4 @@
-export const SEVERITIES = new Set([
+const SEVERITIES = new Set([
   "bug",
   "security",
   "performance",
@@ -17,7 +17,13 @@ export function normalizeFinding(finding) {
   const severity = stringValue(finding.severity).toLowerCase();
   const comment = stringValue(finding.comment);
 
-  if (!path || !Number.isInteger(line) || line < 1 || !SEVERITIES.has(severity) || !comment) {
+  if (
+    !path ||
+    !Number.isSafeInteger(line) ||
+    line < 1 ||
+    !SEVERITIES.has(severity) ||
+    !comment
+  ) {
     return null;
   }
 
@@ -30,6 +36,6 @@ export function normalizeFinding(finding) {
   };
 }
 
-export function stringValue(value) {
+function stringValue(value) {
   return typeof value === "string" ? value.trim() : "";
 }

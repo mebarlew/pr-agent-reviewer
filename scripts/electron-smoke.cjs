@@ -1,16 +1,19 @@
 const { createServer } = require("node:http");
 const { readFile } = require("node:fs/promises");
-const { extname, resolve } = require("node:path");
+const { extname, resolve: resolvePath } = require("node:path");
 const { once } = require("node:events");
 const { app, BrowserWindow } = require("electron");
 
-const appRoot = resolve(__dirname, "../app");
+const appRoot = resolvePath(__dirname, "../app");
 let server;
 
-app.whenReady().then(run).catch((error) => {
-  console.error(error);
-  app.exit(1);
-});
+app
+  .whenReady()
+  .then(run)
+  .catch((error) => {
+    console.error(error);
+    app.exit(1);
+  });
 
 async function run() {
   try {
@@ -27,7 +30,10 @@ async function run() {
     });
 
     await window.loadURL(`${baseUrl}/?token=smoke-token`);
-    const result = await window.webContents.executeJavaScript(rendererSmokeCheck(), true);
+    const result = await window.webContents.executeJavaScript(
+      rendererSmokeCheck(),
+      true,
+    );
 
     if (!result.ok) {
       throw new Error(result.error);
@@ -90,7 +96,8 @@ async function startFixtureServer() {
               deletions: 1,
               changes: 3,
               patchAvailable: true,
-              patch: "@@ -1,3 +1,4 @@\n context\n-old line\n+new line\n+another line",
+              patch:
+                "@@ -1,3 +1,4 @@\n context\n-old line\n+new line\n+another line",
             },
           ],
           review: {
@@ -125,7 +132,7 @@ async function startFixtureServer() {
 
 async function serveStatic(pathname, response) {
   const relativePath = pathname === "/" ? "index.html" : pathname.slice(1);
-  const filePath = resolve(appRoot, relativePath);
+  const filePath = resolvePath(appRoot, relativePath);
   const content = await readFile(filePath);
 
   response.writeHead(200, {
@@ -160,18 +167,28 @@ function mimeType(filePath) {
 function rendererSmokeCheck() {
   return `(${async () => {
     try {
-      await waitFor(() => document.querySelector("#providerName").options.length === 1);
+      await waitFor(
+        () => document.querySelector("#providerName").options.length === 1,
+      );
 
       document.querySelector("#prRef").value = "acme/widgets#42";
       document.querySelector("#reviewForm").requestSubmit();
 
-      await waitFor(() => document.querySelector("#counts").textContent.includes("1 files"));
+      await waitFor(() =>
+        document.querySelector("#counts").textContent.includes("1 files"),
+      );
 
       document.querySelector('[data-tab="files"]').click();
-      await waitFor(() => document.querySelector("#filesPanel").classList.contains("active"));
+      await waitFor(() =>
+        document.querySelector("#filesPanel").classList.contains("active"),
+      );
 
-      const fileName = document.querySelector(".file-diff-header strong")?.textContent;
-      const activeFile = document.querySelector(".file-row.active strong")?.textContent;
+      const fileName = document.querySelector(
+        ".file-diff-header strong",
+      )?.textContent;
+      const activeFile = document.querySelector(
+        ".file-row.active strong",
+      )?.textContent;
       const summary = document.querySelector(".files-summary")?.textContent;
       const hunk = document.querySelectorAll(".diff-line.hunk").length;
       const added = document.querySelectorAll(".diff-line.added").length;
@@ -191,7 +208,12 @@ function rendererSmokeCheck() {
 
       if (hunk !== 1 || added !== 2 || removed !== 1) {
         throw new Error(
-          "Unexpected diff classes: hunk=" + hunk + " added=" + added + " removed=" + removed,
+          "Unexpected diff classes: hunk=" +
+            hunk +
+            " added=" +
+            added +
+            " removed=" +
+            removed,
         );
       }
 
