@@ -10,7 +10,7 @@ const state = {
   threadPollTimer: null,
 };
 
-const THREAD_POLL_INTERVAL_MS = 60 * 1000;
+const THREAD_POLL_INTERVAL_MS = 20 * 60 * 1000;
 
 let authToken = "";
 
@@ -417,7 +417,12 @@ function notifyThreadResolved(thread) {
   elements.statusText.textContent = message;
 
   if ("Notification" in window && Notification.permission === "granted") {
-    new Notification("Review comment resolved", { body: message });
+    const notification = new Notification("Review comment resolved", {
+      body: message,
+    });
+    notification.onclick = () => {
+      window.prAgent?.showWindow?.();
+    };
   }
 }
 

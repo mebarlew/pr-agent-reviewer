@@ -1,7 +1,16 @@
 const { once } = require("node:events");
 const { randomUUID } = require("node:crypto");
 const { join } = require("node:path");
-const { app, BrowserWindow, ipcMain, safeStorage, session, shell } = require("electron");
+const {
+  app,
+  BrowserWindow,
+  ipcMain,
+  Menu,
+  safeStorage,
+  session,
+  shell,
+  Tray,
+} = require("electron");
 const { createGithubTokenStore } = require("./github-token-store.cjs");
 
 const authToken = randomUUID();
@@ -9,6 +18,8 @@ let githubTokenStore;
 let server;
 let serverUrl;
 let mainWindow;
+let tray;
+let quitting = false;
 
 app.setName("PR Agent Reviewer");
 
@@ -51,7 +62,17 @@ async function createWindow() {
       sandbox: true,
       webSecurity: true,
       allowRunningInsecureContent: false,
+      // The renderer keeps polling for resolved review threads while the
+      // window is hidden in the tray.
+      backgroundThrottling: false,
     },
+  });
+
+  mainWindow.on("close", (event) => {
+    if (!quitting) {
+      event.preventDefault();
+      mainWindow.hide();
+    }
   });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -81,33 +102,64 @@ app.whenReady().then(async () => {
   githubTokenStore = createGithubTokenStore({ app, safeStorage });
 
   ipcMain.handle("auth-token", () => authToken);
+  ipcMain.handle("show-window", () => showMainWindow());
 
-  session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => {
-    callback(false);
-  });
+  session.defaultSession.setPermissionRequestHandler(
+    (_webContents, _permission, callback) => {
+      callback(false);
+    },
+  );
 
   await createWindow();
+  createTray();
 
   app.on("activate", async () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      await createWindow();
-    }
+    await showMainWindow();
   });
 });
 
-app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
-    app.quit();
-  }
-});
+// Closing the window hides it to the tray; the app only exits via
+// the tray menu or an explicit quit.
+app.on("window-all-closed", () => {});
 
 app.on("before-quit", () => {
+  quitting = true;
+
   if (server) {
     server.close();
     server = null;
     serverUrl = null;
   }
 });
+
+function createTray() {
+  tray = new Tray(join(__dirname, "tray-icon.png"));
+  tray.setToolTip("PR Agent Reviewer");
+  tray.setContextMenu(
+    Menu.buildFromTemplate([
+      {
+        label: "Open PR Agent Reviewer",
+        click: () => showMainWindow(),
+      },
+      { type: "separator" },
+      {
+        label: "Quit",
+        click: () => app.quit(),
+      },
+    ]),
+  );
+  tray.on("click", () => showMainWindow());
+}
+
+async function showMainWindow() {
+  if (mainWindow) {
+    mainWindow.show();
+    mainWindow.focus();
+    return;
+  }
+
+  await createWindow();
+}
 
 function isAppUrl(url) {
   if (!serverUrl) {
