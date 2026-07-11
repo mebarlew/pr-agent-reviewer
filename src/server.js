@@ -128,11 +128,13 @@ export function createAppServer({
         return;
       }
 
-      const threadsMatch = url.pathname.match(
-        /^\/api\/reviews\/([^/]+)\/threads$/,
-      );
-      if (request.method === "GET" && threadsMatch) {
-        await handleReviewThreads(threadsMatch[1], response, githubTokenStore);
+      if (request.method === "POST" && url.pathname === "/api/review-threads") {
+        await handleReviewThreads(
+          request,
+          response,
+          maxBodyBytes,
+          githubTokenStore,
+        );
         return;
       }
 
@@ -301,27 +303,28 @@ async function handlePostReview(
     githubToken,
   });
 
-  cached.githubReviewId = posted.githubReviewId;
-
   sendJson(response, 200, posted);
 }
 
-async function handleReviewThreads(reviewId, response, githubTokenStore) {
-  const cached = getCachedReview(reviewId);
-  if (!cached) {
-    sendJson(response, 404, { error: "Review expired or unknown" });
+async function handleReviewThreads(
+  request,
+  response,
+  maxBodyBytes,
+  githubTokenStore,
+) {
+  const body = await readJson(request, maxBodyBytes);
+  const pullRequest = parsePullRequestRef(
+    requiredString(body.prRef, "prRef is required"),
+  );
+  if (!Number.isInteger(body.reviewId)) {
+    sendJson(response, 400, { error: "reviewId must be an integer" });
     return;
   }
 
-  if (!cached.githubReviewId) {
-    sendJson(response, 409, { error: "Review has not been posted yet" });
-    return;
-  }
-
-  const githubToken = await resolveGithubToken({}, githubTokenStore);
+  const githubToken = await resolveGithubToken(body, githubTokenStore);
   const threads = await fetchReviewThreads(
-    cached.pullRequest,
-    cached.githubReviewId,
+    pullRequest,
+    body.reviewId,
     githubToken,
   );
 

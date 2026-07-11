@@ -2,6 +2,7 @@ const state = {
   files: [],
   githubTokenStatus: null,
   reviewId: null,
+  githubReviewId: null,
   pullRequest: null,
   repoPullRequests: [],
   selectedFileIndex: 0,
@@ -9,7 +10,7 @@ const state = {
   threadPollTimer: null,
 };
 
-const THREAD_POLL_INTERVAL_MS = 10 * 60 * 1000;
+const THREAD_POLL_INTERVAL_MS = 60 * 1000;
 
 let authToken = "";
 
@@ -324,7 +325,8 @@ async function postSelected() {
       `Posted ${result.inlineComments} comments and ${result.summaryComments} summary`,
     );
 
-    if (result.githubReviewId) {
+    state.githubReviewId = result.githubReviewId ?? null;
+    if (state.githubReviewId) {
       startThreadPolling();
     }
   } catch (error) {
@@ -344,6 +346,7 @@ function startThreadPolling() {
     pollReviewThreads,
     THREAD_POLL_INTERVAL_MS,
   );
+  pollReviewThreads();
 }
 
 function stopThreadPolling() {
@@ -354,14 +357,21 @@ function stopThreadPolling() {
 }
 
 async function pollReviewThreads() {
-  if (!state.reviewId) {
+  if (!state.githubReviewId || !state.pullRequest) {
     stopThreadPolling();
     return;
   }
 
   let threads;
   try {
-    const result = await requestJson(`/api/reviews/${state.reviewId}/threads`);
+    const result = await requestJson("/api/review-threads", {
+      method: "POST",
+      body: {
+        prRef: state.pullRequest.htmlUrl,
+        reviewId: state.githubReviewId,
+        githubToken: githubTokenOverride(),
+      },
+    });
     threads = result.threads;
   } catch {
     return;
@@ -774,6 +784,7 @@ function clearResults() {
   state.resolvedThreadIds = new Set();
   state.files = [];
   state.reviewId = null;
+  state.githubReviewId = null;
   state.pullRequest = null;
   state.selectedFileIndex = 0;
   elements.postButton.disabled = true;

@@ -196,7 +196,9 @@ test("normalizeReviewThreads keeps only threads from the given review", () => {
       isResolved: true,
       resolvedBy: "octocat",
       path: "src/a.js",
-      line: 12,
+      // originalLine wins: `line` (12) has shifted since the comment was
+      // created at line 10, and the UI keys findings by the original line.
+      line: 10,
     },
     {
       threadId: "T_2",

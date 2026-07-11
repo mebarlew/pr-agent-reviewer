@@ -17,7 +17,10 @@ test("api requests require the local auth token", async () => {
 
     const payload = await authorized.json();
     assert.ok(Array.isArray(payload.providers));
-    assert.match(authorized.headers.get("content-security-policy"), /default-src 'self'/);
+    assert.match(
+      authorized.headers.get("content-security-policy"),
+      /default-src 'self'/,
+    );
   });
 });
 
@@ -35,19 +38,22 @@ test("api requests reject non-loopback origins", async () => {
 });
 
 test("api requests enforce the body size cap", async () => {
-  await withServer({ authToken: "secret", maxBodyBytes: 32 }, async (baseUrl) => {
-    const response = await fetch(`${baseUrl}/api/git`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-PR-Agent-Token": "secret",
-      },
-      body: JSON.stringify({ workspace: "x".repeat(64) }),
-    });
+  await withServer(
+    { authToken: "secret", maxBodyBytes: 32 },
+    async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/api/git`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-PR-Agent-Token": "secret",
+        },
+        body: JSON.stringify({ workspace: "x".repeat(64) }),
+      });
 
-    assert.equal(response.status, 413);
-    assert.match((await response.json()).error, /Request body too large/);
-  });
+      assert.equal(response.status, 413);
+      assert.match((await response.json()).error, /Request body too large/);
+    },
+  );
 });
 
 test("api post requests require JSON content type", async () => {
@@ -83,28 +89,31 @@ test("api post requests reject malformed JSON as a client error", async () => {
 test("github token endpoints save and clear desktop tokens", async () => {
   const githubTokenStore = createFakeGithubTokenStore();
 
-  await withServer({ authToken: "secret", githubTokenStore }, async (baseUrl) => {
-    const saved = await fetch(`${baseUrl}/api/github-token`, {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-        "X-PR-Agent-Token": "secret",
-      },
-      body: JSON.stringify({ githubToken: "ghp_secret" }),
-    });
-    assert.equal(saved.status, 200);
-    assert.equal((await saved.json()).hasStoredGithubToken, true);
-    assert.equal(await githubTokenStore.getToken(), "ghp_secret");
+  await withServer(
+    { authToken: "secret", githubTokenStore },
+    async (baseUrl) => {
+      const saved = await fetch(`${baseUrl}/api/github-token`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "X-PR-Agent-Token": "secret",
+        },
+        body: JSON.stringify({ githubToken: "ghp_secret" }),
+      });
+      assert.equal(saved.status, 200);
+      assert.equal((await saved.json()).hasStoredGithubToken, true);
+      assert.equal(await githubTokenStore.getToken(), "ghp_secret");
 
-    const cleared = await fetch(`${baseUrl}/api/github-token`, {
-      method: "DELETE",
-      headers: {
-        "X-PR-Agent-Token": "secret",
-      },
-    });
-    assert.equal(cleared.status, 200);
-    assert.equal((await cleared.json()).hasStoredGithubToken, false);
-  });
+      const cleared = await fetch(`${baseUrl}/api/github-token`, {
+        method: "DELETE",
+        headers: {
+          "X-PR-Agent-Token": "secret",
+        },
+      });
+      assert.equal(cleared.status, 200);
+      assert.equal((await cleared.json()).hasStoredGithubToken, false);
+    },
+  );
 });
 
 test("github token save is desktop-only without a token store", async () => {
@@ -132,18 +141,40 @@ test("github token status only treats usable stored tokens as available", async 
     }),
   };
 
-  await withServer({ authToken: "secret", githubTokenStore }, async (baseUrl) => {
-    const response = await fetch(`${baseUrl}/api/config`, {
+  await withServer(
+    { authToken: "secret", githubTokenStore },
+    async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/api/config`, {
+        headers: {
+          "X-PR-Agent-Token": "secret",
+        },
+      });
+
+      assert.equal(response.status, 200);
+
+      const payload = await response.json();
+      assert.equal(payload.githubToken.hasStoredGithubToken, true);
+      assert.equal(payload.githubToken.hasGithubToken, false);
+    },
+  );
+});
+
+test("review threads endpoint validates its input", async () => {
+  await withServer({ authToken: "secret" }, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/review-threads`, {
+      method: "POST",
       headers: {
+        "Content-Type": "application/json",
         "X-PR-Agent-Token": "secret",
       },
+      body: JSON.stringify({
+        prRef: "https://github.com/acme/widgets/pull/42",
+        reviewId: "not-a-number",
+      }),
     });
 
-    assert.equal(response.status, 200);
-
-    const payload = await response.json();
-    assert.equal(payload.githubToken.hasStoredGithubToken, true);
-    assert.equal(payload.githubToken.hasGithubToken, false);
+    assert.equal(response.status, 400);
+    assert.match((await response.json()).error, /reviewId must be an integer/);
   });
 });
 

@@ -309,7 +309,9 @@ export function normalizeReviewThreads(nodes, reviewId) {
         isResolved: thread.isResolved,
         resolvedBy: thread.resolvedBy?.login ?? null,
         path: comment.path,
-        line: comment.line ?? comment.originalLine,
+        // originalLine is the position at comment creation, matching the line
+        // the review was posted against; `line` shifts as new commits land.
+        line: comment.originalLine ?? comment.line,
       };
     });
 }
