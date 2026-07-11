@@ -98,25 +98,36 @@ async function createWindow() {
   await mainWindow.loadURL(appUrl);
 }
 
-app.whenReady().then(async () => {
-  githubTokenStore = createGithubTokenStore({ app, safeStorage });
-
-  ipcMain.handle("auth-token", () => authToken);
-  ipcMain.handle("show-window", () => showMainWindow());
-
-  session.defaultSession.setPermissionRequestHandler(
-    (_webContents, _permission, callback) => {
-      callback(false);
-    },
-  );
-
-  await createWindow();
-  createTray();
-
-  app.on("activate", async () => {
-    await showMainWindow();
+// With close-to-tray the process lingers after the window is gone, so a
+// relaunch must re-show the existing instance instead of starting a
+// second server, tray, and poller.
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  app.on("second-instance", () => {
+    showMainWindow();
   });
-});
+
+  app.whenReady().then(async () => {
+    githubTokenStore = createGithubTokenStore({ app, safeStorage });
+
+    ipcMain.handle("auth-token", () => authToken);
+    ipcMain.handle("show-window", () => showMainWindow());
+
+    session.defaultSession.setPermissionRequestHandler(
+      (_webContents, _permission, callback) => {
+        callback(false);
+      },
+    );
+
+    await createWindow();
+    createTray();
+
+    app.on("activate", async () => {
+      await showMainWindow();
+    });
+  });
+}
 
 // Closing the window hides it to the tray; the app only exits via
 // the tray menu or an explicit quit.
