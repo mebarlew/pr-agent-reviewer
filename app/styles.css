@@ -637,16 +637,16 @@ button.primary:active:not(:disabled) {
 
 .finding-head {
   display: grid;
-  grid-template-columns: 1fr 170px auto;
-  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) 170px;
+  gap: 8px 12px;
   align-items: center;
 }
 
 .finding-resolved {
+  grid-column: 1 / -1;
   font-size: 11px;
   color: var(--green);
   font-weight: 500;
-  white-space: nowrap;
 }
 
 .finding textarea,
