@@ -1,22 +1,53 @@
 import { createServer } from "node:http";
+import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import { readFile } from "node:fs/promises";
 import { extname, isAbsolute, join, relative, resolve } from "node:path";
 import { cwd } from "node:process";
 import { fileURLToPath } from "node:url";
 import { randomUUID, timingSafeEqual } from "node:crypto";
-import { loadConfig } from "./config.js";
-import { readGitState } from "./git.js";
+import { loadConfig } from "./config.ts";
+import { readGitState } from "./git.ts";
 import {
   fetchOpenPullRequestsForRepo,
   fetchReviewThreads,
   parsePullRequestRef,
   parseRepositoryRef,
-} from "./github.js";
-import { normalizeFinding } from "./review/schema.js";
-import { postReview, runReview } from "./review/service.js";
+} from "./github.ts";
+import { normalizeFinding } from "./review/schema.ts";
+import type { Finding } from "./review/schema.ts";
+import { postReview, runReview } from "./review/service.ts";
+import type { ReviewRunResult } from "./review/service.ts";
+
+export interface GithubTokenStoreStatus {
+  hasStoredGithubToken: boolean;
+  reason: string;
+  secureStorageAvailable: boolean;
+  storageBackend: string;
+}
+
+export interface GithubTokenStore {
+  clearToken(): Promise<void>;
+  getToken(): Promise<string>;
+  saveToken(token: string): Promise<void>;
+  status(): Promise<GithubTokenStoreStatus>;
+}
+
+export interface CreateAppServerOptions {
+  authToken?: string;
+  githubTokenStore?: GithubTokenStore | null;
+  requireAuth?: boolean;
+  maxBodyBytes?: number;
+}
+
+// Parsed JSON request bodies are client input; fields are validated where
+// they are read.
+type JsonBody = Record<string, unknown>;
 
 const appRoot = resolve(fileURLToPath(new URL("../app", import.meta.url)));
-const reviews = new Map();
+const reviews = new Map<
+  string,
+  { result: ReviewRunResult; expiresAt: number }
+>();
 const DEFAULT_MAX_BODY_BYTES = 1024 * 1024;
 const MAX_CACHED_REVIEWS = 50;
 const REVIEW_TTL_MS = 60 * 60 * 1000;
@@ -38,10 +69,11 @@ export function createAppServer({
   githubTokenStore = null,
   requireAuth = true,
   maxBodyBytes = DEFAULT_MAX_BODY_BYTES,
-} = {}) {
+}: CreateAppServerOptions = {}): Server {
   return createServer(async (request, response) => {
     try {
-      const url = new URL(request.url, "http://localhost");
+      // Server requests always carry a url.
+      const url = new URL(request.url as string, "http://localhost");
 
       if (url.pathname.startsWith("/api/")) {
         if (!isLoopbackRequest(request)) {
@@ -150,12 +182,18 @@ export function createAppServer({
 
       sendJson(response, 404, { error: "Not found" });
     } catch (error) {
-      sendJson(response, error.statusCode ?? 500, { error: error.message });
+      // Anything can be thrown; non-HttpError values fall back to a 500 with
+      // whatever message property they carry, as before.
+      const thrown = error as HttpError;
+      sendJson(response, thrown.statusCode ?? 500, { error: thrown.message });
     }
   });
 }
 
-async function handleConfig(response, githubTokenStore) {
+async function handleConfig(
+  response: ServerResponse,
+  githubTokenStore: GithubTokenStore | null,
+): Promise<void> {
   const config = await loadConfig();
   const providers = Object.entries(config.providers).map(
     ([name, provider]) => ({
@@ -175,11 +213,11 @@ async function handleConfig(response, githubTokenStore) {
 }
 
 async function handleRunReview(
-  request,
-  response,
-  maxBodyBytes,
-  githubTokenStore,
-) {
+  request: IncomingMessage,
+  response: ServerResponse,
+  maxBodyBytes: number,
+  githubTokenStore: GithubTokenStore | null,
+): Promise<void> {
   const body = await readJson(request, maxBodyBytes);
   const providerName = requiredString(
     body.providerName,
@@ -192,7 +230,7 @@ async function handleRunReview(
   const result = await runReview({
     pullRequest,
     providerName,
-    workspace: body.workspace || cwd(),
+    workspace: (body.workspace as string) || cwd(),
     githubToken,
   });
   const reviewId = randomUUID();
@@ -206,24 +244,27 @@ async function handleRunReview(
 }
 
 async function handleReadGit(
-  request,
-  response,
-  maxBodyBytes,
-  githubTokenStore,
-) {
+  request: IncomingMessage,
+  response: ServerResponse,
+  maxBodyBytes: number,
+  githubTokenStore: GithubTokenStore | null,
+): Promise<void> {
   const body = await readJson(request, maxBodyBytes);
   const githubToken = await resolveGithubToken(body, githubTokenStore);
-  const state = await readGitState(body.workspace || cwd(), githubToken);
+  const state = await readGitState(
+    (body.workspace as string) || cwd(),
+    githubToken,
+  );
 
   sendJson(response, 200, state);
 }
 
 async function handleListPullRequests(
-  request,
-  response,
-  maxBodyBytes,
-  githubTokenStore,
-) {
+  request: IncomingMessage,
+  response: ServerResponse,
+  maxBodyBytes: number,
+  githubTokenStore: GithubTokenStore | null,
+): Promise<void> {
   const body = await readJson(request, maxBodyBytes);
   const repo = parseRepositoryRef(
     requiredString(body.repoRef, "repoRef is required"),
@@ -234,16 +275,19 @@ async function handleListPullRequests(
   sendJson(response, 200, result);
 }
 
-async function handleGithubTokenStatus(response, githubTokenStore) {
+async function handleGithubTokenStatus(
+  response: ServerResponse,
+  githubTokenStore: GithubTokenStore | null,
+): Promise<void> {
   sendJson(response, 200, await getGithubTokenStatus(githubTokenStore));
 }
 
 async function handleSaveGithubToken(
-  request,
-  response,
-  maxBodyBytes,
-  githubTokenStore,
-) {
+  request: IncomingMessage,
+  response: ServerResponse,
+  maxBodyBytes: number,
+  githubTokenStore: GithubTokenStore | null,
+): Promise<void> {
   if (!githubTokenStore) {
     sendJson(response, 501, {
       error: "Secure token storage is available in the desktop app.",
@@ -258,7 +302,10 @@ async function handleSaveGithubToken(
   sendJson(response, 200, await getGithubTokenStatus(githubTokenStore));
 }
 
-async function handleClearGithubToken(response, githubTokenStore) {
+async function handleClearGithubToken(
+  response: ServerResponse,
+  githubTokenStore: GithubTokenStore | null,
+): Promise<void> {
   if (githubTokenStore) {
     await githubTokenStore.clearToken();
   }
@@ -267,12 +314,12 @@ async function handleClearGithubToken(response, githubTokenStore) {
 }
 
 async function handlePostReview(
-  reviewId,
-  request,
-  response,
-  maxBodyBytes,
-  githubTokenStore,
-) {
+  reviewId: string,
+  request: IncomingMessage,
+  response: ServerResponse,
+  maxBodyBytes: number,
+  githubTokenStore: GithubTokenStore | null,
+): Promise<void> {
   const cached = getCachedReview(reviewId);
   if (!cached) {
     sendJson(response, 404, { error: "Review expired or unknown" });
@@ -309,11 +356,11 @@ async function handlePostReview(
 }
 
 async function handleReviewThreads(
-  request,
-  response,
-  maxBodyBytes,
-  githubTokenStore,
-) {
+  request: IncomingMessage,
+  response: ServerResponse,
+  maxBodyBytes: number,
+  githubTokenStore: GithubTokenStore | null,
+): Promise<void> {
   const body = await readJson(request, maxBodyBytes);
   const pullRequest = parsePullRequestRef(
     requiredString(body.prRef, "prRef is required"),
@@ -326,15 +373,18 @@ async function handleReviewThreads(
   const githubToken = await resolveGithubToken(body, githubTokenStore);
   const threads = await fetchReviewThreads(
     pullRequest,
-    body.reviewId,
+    body.reviewId as number,
     githubToken,
   );
 
   sendJson(response, 200, { threads });
 }
 
-async function serveStatic(pathname, response) {
-  let relativePath;
+async function serveStatic(
+  pathname: string,
+  response: ServerResponse,
+): Promise<void> {
+  let relativePath: string;
   try {
     relativePath =
       pathname === "/" ? "index.html" : decodeURIComponent(pathname.slice(1));
@@ -364,7 +414,7 @@ async function serveStatic(pathname, response) {
   }
 }
 
-function cacheReview(reviewId, result) {
+function cacheReview(reviewId: string, result: ReviewRunResult): void {
   const now = Date.now();
   pruneReviews(now);
 
@@ -375,17 +425,17 @@ function cacheReview(reviewId, result) {
 
   while (reviews.size > MAX_CACHED_REVIEWS) {
     const oldest = reviews.keys().next().value;
-    reviews.delete(oldest);
+    reviews.delete(oldest as string);
   }
 }
 
-function getCachedReview(reviewId) {
+function getCachedReview(reviewId: string): ReviewRunResult | null {
   pruneReviews(Date.now());
 
   return reviews.get(reviewId)?.result ?? null;
 }
 
-function pruneReviews(now) {
+function pruneReviews(now: number): void {
   for (const [reviewId, cached] of reviews) {
     if (cached.expiresAt <= now) {
       reviews.delete(reviewId);
@@ -393,7 +443,11 @@ function pruneReviews(now) {
   }
 }
 
-function cleanFindings(input, fallback, label) {
+function cleanFindings(
+  input: unknown,
+  fallback: Finding[],
+  label: string,
+): Finding[] {
   if (!Array.isArray(input)) {
     return fallback;
   }
@@ -416,7 +470,10 @@ function cleanFindings(input, fallback, label) {
     .filter((finding) => allowed.has(findingKey(finding)));
 }
 
-async function resolveGithubToken(body, githubTokenStore) {
+async function resolveGithubToken(
+  body: JsonBody,
+  githubTokenStore: GithubTokenStore | null,
+): Promise<string | undefined> {
   const requestToken =
     typeof body.githubToken === "string" ? body.githubToken.trim() : "";
   if (requestToken) {
@@ -439,7 +496,17 @@ async function resolveGithubToken(body, githubTokenStore) {
   }
 }
 
-async function getGithubTokenStatus(githubTokenStore) {
+async function getGithubTokenStatus(
+  githubTokenStore: GithubTokenStore | null,
+): Promise<{
+  canPersistGithubToken: boolean;
+  envGithubToken: boolean;
+  hasGithubToken: boolean;
+  hasStoredGithubToken: boolean;
+  reason: string;
+  secureStorageAvailable: boolean;
+  storageBackend: string;
+}> {
   const envGithubToken = Boolean(process.env.GITHUB_TOKEN);
   const defaultStatus = {
     canPersistGithubToken: false,
@@ -470,11 +537,11 @@ async function getGithubTokenStatus(githubTokenStore) {
   };
 }
 
-function findingKey(finding) {
+function findingKey(finding: Finding): string {
   return `${finding.path}:${finding.line}`;
 }
 
-function requiredString(value, message) {
+function requiredString(value: unknown, message: string): string {
   if (typeof value !== "string" || !value.trim()) {
     throw new Error(message);
   }
@@ -482,13 +549,16 @@ function requiredString(value, message) {
   return value.trim();
 }
 
-function readJson(request, maxBodyBytes) {
+function readJson(
+  request: IncomingMessage,
+  maxBodyBytes: number,
+): Promise<JsonBody> {
   return new Promise((resolveBody, reject) => {
     let raw = "";
     let bytes = 0;
     let settled = false;
 
-    function fail(error) {
+    function fail(error: Error): void {
       if (settled) {
         return;
       }
@@ -498,7 +568,7 @@ function readJson(request, maxBodyBytes) {
     }
 
     request.setEncoding("utf8");
-    request.on("data", (chunk) => {
+    request.on("data", (chunk: string) => {
       if (settled) {
         return;
       }
@@ -529,9 +599,11 @@ function readJson(request, maxBodyBytes) {
       settled = true;
 
       try {
-        resolveBody(raw ? JSON.parse(raw) : {});
+        resolveBody(raw ? (JSON.parse(raw) as JsonBody) : {});
       } catch (error) {
-        reject(new HttpError(400, `Invalid JSON body: ${error.message}`));
+        reject(
+          new HttpError(400, `Invalid JSON body: ${(error as Error).message}`),
+        );
       }
     });
     request.on("error", (error) => {
@@ -543,7 +615,11 @@ function readJson(request, maxBodyBytes) {
   });
 }
 
-function sendJson(response, status, body) {
+function sendJson(
+  response: ServerResponse,
+  status: number,
+  body: unknown,
+): void {
   response.writeHead(status, {
     "Content-Type": "application/json; charset=utf-8",
     "Cache-Control": "no-store",
@@ -552,7 +628,7 @@ function sendJson(response, status, body) {
   response.end(JSON.stringify(body));
 }
 
-function securityHeaders() {
+function securityHeaders(): Record<string, string> {
   return {
     "Content-Security-Policy":
       "default-src 'self'; connect-src 'self'; img-src 'self' data:; script-src 'self'; style-src 'self'",
@@ -564,7 +640,7 @@ function securityHeaders() {
   };
 }
 
-function mimeType(filePath) {
+function mimeType(filePath: string): string {
   const extension = extname(filePath);
 
   if (extension === ".css") {
@@ -578,14 +654,14 @@ function mimeType(filePath) {
   return "text/html; charset=utf-8";
 }
 
-function isLoopbackRequest(request) {
+function isLoopbackRequest(request: IncomingMessage): boolean {
   return (
     isLoopbackHost(request.headers.host) &&
     isAllowedOrigin(request.headers.origin)
   );
 }
 
-function isLoopbackHost(host) {
+function isLoopbackHost(host: string | undefined): boolean {
   if (!host) {
     return false;
   }
@@ -597,7 +673,7 @@ function isLoopbackHost(host) {
   }
 }
 
-function isAllowedOrigin(origin) {
+function isAllowedOrigin(origin: string | undefined): boolean {
   if (!origin) {
     return true;
   }
@@ -610,7 +686,7 @@ function isAllowedOrigin(origin) {
   }
 }
 
-function isLoopbackHostname(hostname) {
+function isLoopbackHostname(hostname: string): boolean {
   return (
     hostname === "localhost" ||
     hostname === "127.0.0.1" ||
@@ -619,7 +695,7 @@ function isLoopbackHostname(hostname) {
   );
 }
 
-function isAuthorized(request, authToken) {
+function isAuthorized(request: IncomingMessage, authToken: string): boolean {
   const header = request.headers["x-pr-agent-token"];
   const value = Array.isArray(header) ? header[0] : header;
 
@@ -633,14 +709,16 @@ function isAuthorized(request, authToken) {
   return actual.length === expected.length && timingSafeEqual(actual, expected);
 }
 
-function hasJsonContentType(request) {
+function hasJsonContentType(request: IncomingMessage): boolean {
   const header = request.headers["content-type"];
   const value = Array.isArray(header) ? header[0] : header;
   return value?.toLowerCase().split(";")[0].trim() === "application/json";
 }
 
 class HttpError extends Error {
-  constructor(statusCode, message) {
+  statusCode: number;
+
+  constructor(statusCode: number, message: string) {
     super(message);
     this.statusCode = statusCode;
   }

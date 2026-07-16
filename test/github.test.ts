@@ -99,8 +99,8 @@ test("githubRequest sends an abort signal for request timeouts", async () => {
 
   try {
     globalThis.fetch = async (_url, options) => {
-      assert.ok(options.signal);
-      assert.equal(options.signal.aborted, false);
+      assert.ok(options?.signal);
+      assert.equal(options?.signal?.aborted, false);
 
       return new Response(JSON.stringify({ ok: true }), {
         status: 200,
@@ -133,7 +133,7 @@ test("createPullRequestReview returns the created review id", async () => {
   try {
     globalThis.fetch = async (url, options) => {
       assert.ok(String(url).endsWith("/repos/acme/widgets/pulls/42/reviews"));
-      assert.equal(options.method, "POST");
+      assert.equal(options?.method, "POST");
 
       return new Response(JSON.stringify({ id: 987654 }), {
         status: 200,
@@ -288,12 +288,12 @@ test("fetchReviewThreads pages through the GraphQL connection", async () => {
       },
     },
   ];
-  const cursors = [];
+  const cursors: Array<string | null> = [];
 
   try {
     globalThis.fetch = async (url, options) => {
       assert.ok(String(url).endsWith("/graphql"));
-      cursors.push(JSON.parse(options.body).variables.cursor);
+      cursors.push(JSON.parse(String(options?.body)).variables.cursor);
 
       return new Response(JSON.stringify(pages.shift()), {
         status: 200,

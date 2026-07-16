@@ -1,7 +1,164 @@
 const GITHUB_API = "https://api.github.com";
 const DEFAULT_GITHUB_TIMEOUT_MS = 30 * 1000;
 
-export function parseRepositoryRef(value) {
+import type { Finding } from "./review/schema.ts";
+
+export interface RepositoryRef {
+  owner: string;
+  repo: string;
+}
+
+export interface PullRequestRef extends RepositoryRef {
+  number: number;
+}
+
+export interface PullRequestInfo extends PullRequestRef {
+  title: string;
+  htmlUrl: string;
+  headSha: string;
+  baseRef: string;
+  headRef: string;
+}
+
+export interface ChangedFile {
+  filename: string;
+  status: string;
+  additions: number;
+  deletions: number;
+  changes: number;
+  patchAvailable: boolean;
+  patch: string;
+}
+
+export type ChangedLineIndex = Map<string, Set<number>>;
+
+export interface PullRequestContext {
+  pullRequest: PullRequestInfo;
+  files: ChangedFile[];
+  changedLines: ChangedLineIndex;
+}
+
+export interface GitHubViewer {
+  login: string;
+  htmlUrl: string;
+}
+
+export interface RepositoryInfo extends RepositoryRef {
+  fullName: string;
+  htmlUrl: string;
+  private: boolean;
+  defaultBranch: string;
+}
+
+export type ReviewState = "draft" | "needs_review" | "open";
+
+export interface PullRequestSummary {
+  number: number;
+  title: string;
+  htmlUrl: string;
+  author: string;
+  draft: boolean;
+  updatedAt: string;
+  createdAt: string;
+  baseRef: string;
+  headRef: string;
+  labels: string[];
+  requestedReviewers: string[];
+  requestedTeams: string[];
+  requestedFromViewer: boolean;
+  reviewState: ReviewState;
+}
+
+export interface BranchPullRequest {
+  number: number;
+  title: string;
+  htmlUrl: string;
+  headRef: string;
+  baseRef: string;
+  draft: boolean;
+}
+
+export interface ReviewThread {
+  threadId: string;
+  isResolved: boolean;
+  resolvedBy: string | null;
+  path: string;
+  line: number | null;
+}
+
+// Raw GitHub REST API payloads, limited to the fields this app reads.
+interface GitHubPullRequest {
+  number: number;
+  title: string;
+  html_url: string;
+  draft: boolean;
+  updated_at: string;
+  created_at: string;
+  user: { login: string };
+  head: { sha: string; ref: string };
+  base: { ref: string };
+  labels: { name: string }[];
+  requested_reviewers: { login: string }[];
+  requested_teams: { slug: string }[];
+}
+
+interface GitHubRepository {
+  full_name: string;
+  html_url: string;
+  private: boolean;
+  default_branch: string;
+}
+
+interface GitHubUser {
+  login: string;
+  html_url: string;
+}
+
+interface GitHubPullRequestFile {
+  filename: string;
+  status: string;
+  additions: number;
+  deletions: number;
+  changes: number;
+  patch?: string;
+}
+
+// Raw GraphQL reviewThreads nodes, limited to the queried fields.
+export interface ReviewThreadNode {
+  id: string;
+  isResolved: boolean;
+  resolvedBy: { login: string } | null;
+  comments: {
+    nodes: {
+      path: string;
+      line: number | null;
+      originalLine: number | null;
+      pullRequestReview: { databaseId: number } | null;
+    }[];
+  };
+}
+
+interface ReviewThreadsConnection {
+  pageInfo: { hasNextPage: boolean; endCursor: string | null };
+  nodes: ReviewThreadNode[];
+}
+
+interface ReviewThreadsQueryData {
+  repository: {
+    pullRequest: {
+      reviewThreads: ReviewThreadsConnection | null;
+    } | null;
+  } | null;
+}
+
+export interface GithubRequestOptions {
+  token?: string;
+  method?: string;
+  body?: unknown;
+  timeoutMs?: number;
+}
+
+export function parseRepositoryRef(value: string): RepositoryRef {
   const url = parseGitHubUrl(value);
   if (url) {
     const [owner, repo] = url.pathname.split("/").filter(Boolean);
@@ -29,7 +186,7 @@ export function parseRepositoryRef(value) {
   );
 }
 
-export function parsePullRequestRef(value) {
+export function parsePullRequestRef(value: string): PullRequestRef {
   const url = parseGitHubUrl(value);
   if (url) {
     const [owner, repo, segment, number] = url.pathname
@@ -60,7 +217,7 @@ export function parsePullRequestRef(value) {
   );
 }
 
-function parseGitHubUrl(value) {
+function parseGitHubUrl(value: string): URL | null {
   const trimmed = value.trim();
   const candidate = trimmed.startsWith("github.com/")
     ? `https://${trimmed}`
@@ -82,18 +239,21 @@ function parseGitHubUrl(value) {
   return null;
 }
 
-function stripGitSuffix(value) {
+function stripGitSuffix(value: string): string {
   return value.endsWith(".git") ? value.slice(0, -4) : value;
 }
 
 // Owner and repo are interpolated into API paths, so anything that could
 // change path resolution ("..", "/", "%2f", ...) must be rejected up front.
-function isSafeRepoSegment(value) {
+function isSafeRepoSegment(value: string): boolean {
   return /^[A-Za-z0-9._-]+$/.test(value) && !value.includes("..");
 }
 
-export async function fetchPullRequestContext(ref, token) {
-  const pullRequest = await githubRequest(
+export async function fetchPullRequestContext(
+  ref: PullRequestRef,
+  token?: string,
+): Promise<PullRequestContext> {
+  const pullRequest = await githubRequest<GitHubPullRequest>(
     `${repoPath(ref)}/pulls/${ref.number}`,
     { token },
   );
@@ -115,8 +275,15 @@ export async function fetchPullRequestContext(ref, token) {
   };
 }
 
-export async function fetchOpenPullRequestsForRepo(ref, token) {
-  const repository = await githubRequest(repoPath(ref), {
+export async function fetchOpenPullRequestsForRepo(
+  ref: RepositoryRef,
+  token?: string,
+): Promise<{
+  repository: RepositoryInfo;
+  viewer: GitHubViewer | null;
+  pullRequests: PullRequestSummary[];
+}> {
+  const repository = await githubRequest<GitHubRepository>(repoPath(ref), {
     token,
   });
   const viewer = await fetchViewer(token);
@@ -139,11 +306,16 @@ export async function fetchOpenPullRequestsForRepo(ref, token) {
 }
 
 export async function fetchPullRequestsForBranch(
-  { owner, repo, headOwner, branch },
-  token,
-) {
+  {
+    owner,
+    repo,
+    headOwner,
+    branch,
+  }: { owner: string; repo: string; headOwner: string; branch: string },
+  token?: string,
+): Promise<BranchPullRequest[]> {
   const head = encodeURIComponent(`${headOwner}:${branch}`);
-  const pulls = await githubRequest(
+  const pulls = await githubRequest<GitHubPullRequest[]>(
     `${repoPath({ owner, repo })}/pulls?state=open&head=${head}&per_page=10`,
     { token },
   );
@@ -158,13 +330,13 @@ export async function fetchPullRequestsForBranch(
   }));
 }
 
-async function fetchViewer(token) {
+async function fetchViewer(token?: string): Promise<GitHubViewer | null> {
   if (!token) {
     return null;
   }
 
   try {
-    const user = await githubRequest("/user", { token });
+    const user = await githubRequest<GitHubUser>("/user", { token });
     return {
       login: user.login,
       htmlUrl: user.html_url,
@@ -174,7 +346,10 @@ async function fetchViewer(token) {
   }
 }
 
-function normalizePullRequestSummary(pullRequest, viewer) {
+function normalizePullRequestSummary(
+  pullRequest: GitHubPullRequest,
+  viewer: GitHubViewer | null,
+): PullRequestSummary {
   const requestedReviewers = pullRequest.requested_reviewers.map(
     (reviewer) => reviewer.login,
   );
@@ -209,11 +384,11 @@ function normalizePullRequestSummary(pullRequest, viewer) {
 }
 
 export async function createPullRequestReview(
-  pullRequest,
-  findings,
-  token,
-  body,
-) {
+  pullRequest: PullRequestRef & { headSha: string },
+  findings: Finding[],
+  token: string | undefined,
+  body: string,
+): Promise<{ reviewId: number }> {
   requireToken(token, "--post requires GITHUB_TOKEN");
 
   const comments = findings.map((finding) => ({
@@ -223,7 +398,7 @@ export async function createPullRequestReview(
     body: formatInlineComment(finding),
   }));
 
-  const review = await githubRequest(
+  const review = await githubRequest<{ id: number }>(
     `${repoPath(pullRequest)}/pulls/${pullRequest.number}/reviews`,
     {
       token,
@@ -272,25 +447,31 @@ const REVIEW_THREADS_QUERY = `
   }
 `;
 
-export async function fetchReviewThreads(pullRequest, reviewId, token) {
+export async function fetchReviewThreads(
+  pullRequest: PullRequestRef,
+  reviewId: number,
+  token?: string,
+): Promise<ReviewThread[]> {
   requireToken(token, "Fetching review threads requires a GitHub token");
 
-  const nodes = [];
-  let cursor = null;
+  const nodes: ReviewThreadNode[] = [];
+  let cursor: string | null = null;
 
   do {
-    const data = await githubGraphql(
-      REVIEW_THREADS_QUERY,
-      {
-        owner: pullRequest.owner,
-        repo: pullRequest.repo,
-        number: pullRequest.number,
-        cursor,
-      },
-      token,
-    );
+    const data: ReviewThreadsQueryData | null =
+      await githubGraphql<ReviewThreadsQueryData>(
+        REVIEW_THREADS_QUERY,
+        {
+          owner: pullRequest.owner,
+          repo: pullRequest.repo,
+          number: pullRequest.number,
+          cursor,
+        },
+        token,
+      );
 
-    const connection = data?.repository?.pullRequest?.reviewThreads;
+    const connection: ReviewThreadsConnection | null | undefined =
+      data?.repository?.pullRequest?.reviewThreads;
     if (!connection) {
       break;
     }
@@ -304,7 +485,10 @@ export async function fetchReviewThreads(pullRequest, reviewId, token) {
   return normalizeReviewThreads(nodes, reviewId);
 }
 
-export function normalizeReviewThreads(nodes, reviewId) {
+export function normalizeReviewThreads(
+  nodes: ReviewThreadNode[],
+  reviewId: number,
+): ReviewThread[] {
   return nodes
     .filter(
       (thread) =>
@@ -325,8 +509,17 @@ export function normalizeReviewThreads(nodes, reviewId) {
     });
 }
 
-async function githubGraphql(query, variables, token) {
-  const result = await githubRequest("/graphql", {
+interface GraphqlResponse<T> {
+  data?: T | null;
+  errors?: { message: string }[];
+}
+
+async function githubGraphql<T>(
+  query: string,
+  variables: Record<string, unknown>,
+  token?: string,
+): Promise<T | null> {
+  const result = await githubRequest<GraphqlResponse<T>>("/graphql", {
     token,
     method: "POST",
     body: { query, variables },
@@ -341,7 +534,11 @@ async function githubGraphql(query, variables, token) {
   return result?.data ?? null;
 }
 
-export async function postIssueComment(pullRequest, body, token) {
+export async function postIssueComment(
+  pullRequest: PullRequestRef,
+  body: string,
+  token?: string,
+): Promise<void> {
   requireToken(token, "--post requires GITHUB_TOKEN");
 
   await githubRequest(
@@ -354,8 +551,11 @@ export async function postIssueComment(pullRequest, body, token) {
   );
 }
 
-async function fetchPullRequestFiles(ref, token) {
-  const files = await githubPaginate(
+async function fetchPullRequestFiles(
+  ref: PullRequestRef,
+  token?: string,
+): Promise<ChangedFile[]> {
+  const files = await githubPaginate<GitHubPullRequestFile>(
     `${repoPath(ref)}/pulls/${ref.number}/files?per_page=100`,
     { token },
   );
@@ -371,22 +571,30 @@ async function fetchPullRequestFiles(ref, token) {
   }));
 }
 
-async function fetchOpenPullRequestPages(ref, token) {
-  return githubPaginate(
+async function fetchOpenPullRequestPages(
+  ref: RepositoryRef,
+  token?: string,
+): Promise<GitHubPullRequest[]> {
+  return githubPaginate<GitHubPullRequest>(
     `${repoPath(ref)}/pulls?state=open&sort=updated&direction=desc&per_page=100`,
     { token },
   );
 }
 
-function repoPath({ owner, repo }) {
+function repoPath({ owner, repo }: RepositoryRef): string {
   return `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`;
 }
 
-export async function githubRequest(
-  path,
-  { token, method = "GET", body, timeoutMs = DEFAULT_GITHUB_TIMEOUT_MS } = {},
-) {
-  const { data } = await githubRequestWithHeaders(path, {
+export async function githubRequest<T = unknown>(
+  path: string,
+  {
+    token,
+    method = "GET",
+    body,
+    timeoutMs = DEFAULT_GITHUB_TIMEOUT_MS,
+  }: GithubRequestOptions = {},
+): Promise<T> {
+  const { data } = await githubRequestWithHeaders<T>(path, {
     method,
     token,
     body,
@@ -396,12 +604,18 @@ export async function githubRequest(
   return data;
 }
 
-async function githubPaginate(path, options) {
-  const results = [];
-  let nextPath = path;
+async function githubPaginate<T>(
+  path: string,
+  options: GithubRequestOptions,
+): Promise<T[]> {
+  const results: T[] = [];
+  let nextPath: string | null = path;
 
   while (nextPath) {
-    const { data, headers } = await githubRequestWithHeaders(nextPath, options);
+    const { data, headers } = await githubRequestWithHeaders<T[]>(
+      nextPath,
+      options,
+    );
     results.push(...data);
     nextPath = parseNextLinkPath(headers.get("link"));
   }
@@ -409,11 +623,16 @@ async function githubPaginate(path, options) {
   return results;
 }
 
-async function githubRequestWithHeaders(
-  path,
-  { token, method = "GET", body, timeoutMs = DEFAULT_GITHUB_TIMEOUT_MS } = {},
-) {
-  const headers = {
+async function githubRequestWithHeaders<T>(
+  path: string,
+  {
+    token,
+    method = "GET",
+    body,
+    timeoutMs = DEFAULT_GITHUB_TIMEOUT_MS,
+  }: GithubRequestOptions = {},
+): Promise<{ data: T; headers: Headers }> {
+  const headers: Record<string, string> = {
     Accept: "application/vnd.github+json",
     "X-GitHub-Api-Version": "2022-11-28",
     "User-Agent": "pr-agent-reviewer",
@@ -440,18 +659,20 @@ async function githubRequestWithHeaders(
 
   if (response.status === 204) {
     return {
-      data: null,
+      // 204 responses have no body; T is null for the endpoints that hit
+      // this branch, mirroring the untyped behavior.
+      data: null as T,
       headers: response.headers,
     };
   }
 
   return {
-    data: await response.json(),
+    data: (await response.json()) as T,
     headers: response.headers,
   };
 }
 
-export function parseNextLinkPath(linkHeader) {
+export function parseNextLinkPath(linkHeader: string | null): string | null {
   if (!linkHeader) {
     return null;
   }
@@ -469,7 +690,11 @@ export function parseNextLinkPath(linkHeader) {
   return null;
 }
 
-async function formatGitHubError(response, method, path) {
+async function formatGitHubError(
+  response: Response,
+  method: string,
+  path: string,
+): Promise<string> {
   const text = await response.text();
   const retryAfter = response.headers.get("retry-after");
   const rateLimitRemaining = response.headers.get("x-ratelimit-remaining");
@@ -489,8 +714,8 @@ async function formatGitHubError(response, method, path) {
   return details.join(" ");
 }
 
-function buildChangedLineIndex(files) {
-  const index = new Map();
+function buildChangedLineIndex(files: ChangedFile[]): ChangedLineIndex {
+  const index: ChangedLineIndex = new Map();
 
   for (const file of files) {
     index.set(file.filename, parseChangedLines(file.patch));
@@ -499,8 +724,8 @@ function buildChangedLineIndex(files) {
   return index;
 }
 
-export function parseChangedLines(patch) {
-  const lines = new Set();
+export function parseChangedLines(patch: string): Set<number> {
+  const lines = new Set<number>();
   let newLine = 0;
 
   for (const line of patch.split("\n")) {
@@ -528,14 +753,17 @@ export function parseChangedLines(patch) {
   return lines;
 }
 
-function formatInlineComment(finding) {
+function formatInlineComment(finding: Finding): string {
   const suggestion = finding.suggestion
     ? `\n\nSuggested direction:\n\n${finding.suggestion}`
     : "";
   return `**${finding.severity}**: ${finding.comment}${suggestion}`;
 }
 
-function requireToken(token, message) {
+function requireToken(
+  token: string | undefined,
+  message: string,
+): asserts token is string {
   if (!token) {
     throw new Error(message);
   }

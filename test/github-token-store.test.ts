@@ -6,7 +6,9 @@ import { join } from "node:path";
 import test from "node:test";
 
 const require = createRequire(import.meta.url);
-const { createGithubTokenStore } = require("../electron/github-token-store.cjs");
+const {
+  createGithubTokenStore,
+} = require("../electron/github-token-store.cjs");
 
 test("github token store encrypts, reads, and clears a token", async () => {
   const dir = await mkdtemp(join(tmpdir(), "pr-agent-token-"));
@@ -58,11 +60,12 @@ test("github token store refuses basic_text storage", async () => {
 
 function createFakeSafeStorage({ storageBackend = "mock" } = {}) {
   return {
-    decryptStringAsync: async (encrypted) => ({
+    decryptStringAsync: async (encrypted: Buffer) => ({
       result: Buffer.from(encrypted.toString(), "base64").toString("utf8"),
       shouldReEncrypt: false,
     }),
-    encryptStringAsync: async (plainText) => Buffer.from(Buffer.from(plainText).toString("base64")),
+    encryptStringAsync: async (plainText: string) =>
+      Buffer.from(Buffer.from(plainText).toString("base64")),
     getSelectedStorageBackend: () => storageBackend,
     isAsyncEncryptionAvailable: async () => true,
   };

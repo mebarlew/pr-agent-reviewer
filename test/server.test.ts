@@ -2,11 +2,16 @@ import assert from "node:assert/strict";
 import { once } from "node:events";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createConnection } from "node:net";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { createAppServer } from "../src/server.js";
+import type {
+  CreateAppServerOptions,
+  GithubTokenStore,
+} from "../src/server.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -22,10 +27,10 @@ test("api requests require the local auth token", async () => {
     });
     assert.equal(authorized.status, 200);
 
-    const payload = await authorized.json();
+    const payload = (await authorized.json()) as { providers: unknown };
     assert.ok(Array.isArray(payload.providers));
     assert.match(
-      authorized.headers.get("content-security-policy"),
+      authorized.headers.get("content-security-policy") ?? "",
       /default-src 'self'/,
     );
   });
@@ -58,7 +63,10 @@ test("api requests enforce the body size cap", async () => {
       });
 
       assert.equal(response.status, 413);
-      assert.match((await response.json()).error, /Request body too large/);
+      assert.match(
+        ((await response.json()) as { error: string }).error,
+        /Request body too large/,
+      );
     },
   );
 });
@@ -125,7 +133,10 @@ test("api post requests reject malformed JSON as a client error", async () => {
     });
 
     assert.equal(response.status, 400);
-    assert.match((await response.json()).error, /Invalid JSON body/);
+    assert.match(
+      ((await response.json()) as { error: string }).error,
+      /Invalid JSON body/,
+    );
   });
 });
 
@@ -144,7 +155,11 @@ test("github token endpoints save and clear desktop tokens", async () => {
         body: JSON.stringify({ githubToken: "ghp_secret" }),
       });
       assert.equal(saved.status, 200);
-      assert.equal((await saved.json()).hasStoredGithubToken, true);
+      assert.equal(
+        ((await saved.json()) as { hasStoredGithubToken: boolean })
+          .hasStoredGithubToken,
+        true,
+      );
       assert.equal(await githubTokenStore.getToken(), "ghp_secret");
 
       const cleared = await fetch(`${baseUrl}/api/github-token`, {
@@ -154,7 +169,11 @@ test("github token endpoints save and clear desktop tokens", async () => {
         },
       });
       assert.equal(cleared.status, 200);
-      assert.equal((await cleared.json()).hasStoredGithubToken, false);
+      assert.equal(
+        ((await cleared.json()) as { hasStoredGithubToken: boolean })
+          .hasStoredGithubToken,
+        false,
+      );
     },
   );
 });
@@ -182,7 +201,7 @@ test("github token status only treats usable stored tokens as available", async 
       secureStorageAvailable: false,
       storageBackend: "unknown",
     }),
-  };
+  } as GithubTokenStore;
 
   await withServer(
     { authToken: "secret", githubTokenStore },
@@ -195,7 +214,9 @@ test("github token status only treats usable stored tokens as available", async 
 
       assert.equal(response.status, 200);
 
-      const payload = await response.json();
+      const payload = (await response.json()) as {
+        githubToken: { hasStoredGithubToken: boolean; hasGithubToken: boolean };
+      };
       assert.equal(payload.githubToken.hasStoredGithubToken, true);
       assert.equal(payload.githubToken.hasGithubToken, false);
     },
@@ -217,7 +238,10 @@ test("review threads endpoint validates its input", async () => {
     });
 
     assert.equal(response.status, 400);
-    assert.match((await response.json()).error, /reviewId must be an integer/);
+    assert.match(
+      ((await response.json()) as { error: string }).error,
+      /reviewId must be an integer/,
+    );
   });
 });
 
@@ -233,13 +257,13 @@ test("review runs resolve providers from the workspace and posts reject invalid 
           fake: {
             type: "acp",
             command: process.execPath,
-            args: [join(__dirname, "../fixtures/fake-acp-agent.js")],
+            args: [join(__dirname, "../fixtures/fake-acp-agent.ts")],
           },
         },
       }),
     );
 
-    globalThis.fetch = (url, options) => {
+    globalThis.fetch = async (url, options) => {
       const target = String(url);
 
       if (target === "https://api.github.com/repos/acme/widgets/pulls/42") {
@@ -286,7 +310,10 @@ test("review runs resolve providers from the workspace and posts reject invalid 
       });
 
       assert.equal(run.status, 200);
-      const review = await run.json();
+      const review = (await run.json()) as {
+        reviewId: number;
+        inlineFindings: Array<Record<string, unknown>>;
+      };
       assert.equal(review.inlineFindings.length, 1);
 
       const post = await fetch(
@@ -304,7 +331,10 @@ test("review runs resolve providers from the workspace and posts reject invalid 
       );
 
       assert.equal(post.status, 400);
-      assert.match((await post.json()).error, /inlineFindings\[0\] is invalid/);
+      assert.match(
+        ((await post.json()) as { error: string }).error,
+        /inlineFindings\[0\] is invalid/,
+      );
     });
   } finally {
     globalThis.fetch = originalFetch;
@@ -312,23 +342,26 @@ test("review runs resolve providers from the workspace and posts reject invalid 
   }
 });
 
-async function withServer(options, run) {
+async function withServer(
+  options: CreateAppServerOptions,
+  run: (baseUrl: string) => Promise<void>,
+) {
   const server = createAppServer(options);
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
 
-  const address = server.address();
+  const address = server.address() as AddressInfo;
 
   try {
     await run(`http://127.0.0.1:${address.port}`);
   } finally {
-    await new Promise((resolve) => {
-      server.close(resolve);
+    await new Promise<void>((resolve) => {
+      server.close(() => resolve());
     });
   }
 }
 
-function jsonResponse(body) {
+function jsonResponse(body: unknown) {
   return new Response(JSON.stringify(body), {
     status: 200,
     headers: {
@@ -345,7 +378,7 @@ function createFakeGithubTokenStore() {
       token = "";
     },
     getToken: async () => token,
-    saveToken: async (value) => {
+    saveToken: async (value: string) => {
       token = value;
     },
     status: async () => ({

@@ -1,16 +1,60 @@
-import { loadConfig } from "../config.js";
+import { loadConfig } from "../config.ts";
 import {
   createPullRequestReview,
   fetchPullRequestContext,
   postIssueComment,
-} from "../github.js";
-import { runProvider } from "../providers/index.js";
+} from "../github.ts";
+import type {
+  ChangedFile,
+  PullRequestInfo,
+  PullRequestRef,
+} from "../github.ts";
+import { runProvider } from "../providers/index.ts";
 import {
   buildReviewMarkdown,
   parseAgentReview,
   splitInlineFindings,
-} from "./findings.js";
-import { buildReviewPrompt } from "./prompt.js";
+} from "./findings.ts";
+import type { AgentReview, SkippedFinding } from "./findings.ts";
+import type { Finding } from "./schema.ts";
+import { buildReviewPrompt } from "./prompt.ts";
+
+export interface RunReviewOptions {
+  pullRequest: PullRequestRef;
+  providerName: string;
+  workspace: string;
+  configPath?: string;
+  githubToken?: string;
+}
+
+export interface ReviewRunResult {
+  providerName: string;
+  pullRequest: PullRequestInfo;
+  files: ChangedFile[];
+  review: AgentReview;
+  inlineFindings: Finding[];
+  skippedFindings: SkippedFinding[];
+  markdown: string;
+  agent: {
+    stopReason?: string;
+    stderr?: string;
+  };
+}
+
+export interface PostReviewOptions {
+  pullRequest: PullRequestInfo;
+  providerName: string;
+  review: { summary?: string; validationErrors?: string[] };
+  inlineFindings: Finding[];
+  skippedFindings: Finding[];
+  githubToken?: string;
+}
+
+export interface PostReviewResult {
+  githubReviewId: number | null;
+  inlineComments: number;
+  summaryComments: number;
+}
 
 export async function runReview({
   pullRequest,
@@ -18,7 +62,7 @@ export async function runReview({
   workspace,
   configPath,
   githubToken,
-}) {
+}: RunReviewOptions): Promise<ReviewRunResult> {
   const config = await loadConfig(configPath, workspace);
   const provider = config.providers[providerName];
 
@@ -64,7 +108,7 @@ export async function postReview({
   inlineFindings,
   skippedFindings,
   githubToken,
-}) {
+}: PostReviewOptions): Promise<PostReviewResult> {
   const markdown = buildReviewMarkdown({
     providerName,
     pullRequest,
@@ -73,7 +117,7 @@ export async function postReview({
     skippedFindings,
   });
 
-  let githubReviewId = null;
+  let githubReviewId: number | null = null;
 
   if (inlineFindings.length > 0) {
     const created = await createPullRequestReview(

@@ -31,7 +31,7 @@ that branch.
 The CLI still works:
 
 ```sh
-node ./bin/pr-agent-review.js review owner/repo#123 --provider codex
+node ./bin/pr-agent-review.ts review owner/repo#123 --provider codex
 ```
 
 Use `--post` to create GitHub review comments. The CLI requires `GITHUB_TOKEN`
@@ -40,7 +40,7 @@ Advanced settings and reuses it for browsing repos, running reviews, and posting
 comments.
 
 ```sh
-GITHUB_TOKEN=... node ./bin/pr-agent-review.js review owner/repo#123 --provider codex --post
+GITHUB_TOKEN=... node ./bin/pr-agent-review.ts review owner/repo#123 --provider codex --post
 ```
 
 ## Providers

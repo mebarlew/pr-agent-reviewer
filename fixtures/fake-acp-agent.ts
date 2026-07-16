@@ -95,6 +95,6 @@ input.on("line", (line) => {
   }
 });
 
-function send(message) {
+function send(message: unknown) {
   process.stdout.write(`${JSON.stringify(message)}\n`);
 }

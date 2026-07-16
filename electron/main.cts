@@ -1,7 +1,9 @@
-const { once } = require("node:events");
-const { randomUUID } = require("node:crypto");
-const { join } = require("node:path");
-const {
+import { once } from "node:events";
+import { randomUUID } from "node:crypto";
+import { join } from "node:path";
+import type { Server } from "node:http";
+import type { AddressInfo } from "node:net";
+import {
   app,
   BrowserWindow,
   ipcMain,
@@ -10,17 +12,18 @@ const {
   session,
   shell,
   Tray,
-} = require("electron");
-const { createGithubTokenStore } = require("./github-token-store.cjs");
+} from "electron";
+import { createGithubTokenStore } from "./github-token-store.cjs";
+import type { GithubTokenStore } from "../src/server.ts";
 
 const authToken = randomUUID();
-let githubTokenStore;
-let server;
-let serverUrl;
-let serverStart;
-let mainWindow;
-let windowCreation;
-let tray;
+let githubTokenStore: GithubTokenStore | undefined;
+let server: Server | null = null;
+let serverUrl: string | null = null;
+let serverStart: Promise<string> | null = null;
+let mainWindow: BrowserWindow | null = null;
+let windowCreation: Promise<BrowserWindow> | null = null;
+let tray: Tray | undefined;
 let quitting = false;
 
 app.setName("PR Agent Reviewer");
@@ -28,7 +31,7 @@ app.setName("PR Agent Reviewer");
 // second-instance and activate can fire while startup is still awaiting the
 // server or window, so both starters cache their in-flight promise instead
 // of guarding on state that is only set once the work finishes.
-function startServer() {
+function startServer(): Promise<string> {
   if (!serverStart) {
     serverStart = launchServer().catch((error) => {
       serverStart = null;
@@ -39,15 +42,16 @@ function startServer() {
   return serverStart;
 }
 
-async function launchServer() {
-  const { createAppServer } = await import("../src/server.js");
-  server = createAppServer({ authToken, githubTokenStore });
-  server.listen(0, "127.0.0.1");
-  await once(server, "listening");
+async function launchServer(): Promise<string> {
+  const { createAppServer } = await import("../src/server.ts");
+  const appServer = createAppServer({ authToken, githubTokenStore });
+  server = appServer;
+  appServer.listen(0, "127.0.0.1");
+  await once(appServer, "listening");
 
-  const address = server.address();
+  const address = appServer.address() as AddressInfo;
   serverUrl = `http://127.0.0.1:${address.port}`;
-  server.once("close", () => {
+  appServer.once("close", () => {
     server = null;
     serverUrl = null;
     serverStart = null;
@@ -56,7 +60,7 @@ async function launchServer() {
   return serverUrl;
 }
 
-function createWindow() {
+function createWindow(): Promise<BrowserWindow> {
   if (!windowCreation) {
     windowCreation = openWindow().catch((error) => {
       windowCreation = null;
@@ -67,10 +71,10 @@ function createWindow() {
   return windowCreation;
 }
 
-async function openWindow() {
+async function openWindow(): Promise<BrowserWindow> {
   const appUrl = await startServer();
 
-  mainWindow = new BrowserWindow({
+  const window = new BrowserWindow({
     width: 1280,
     height: 820,
     minWidth: 940,
@@ -91,15 +95,16 @@ async function openWindow() {
       backgroundThrottling: false,
     },
   });
+  mainWindow = window;
 
-  mainWindow.on("close", (event) => {
+  window.on("close", (event) => {
     if (!quitting) {
       event.preventDefault();
-      mainWindow.hide();
+      window.hide();
     }
   });
 
-  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+  window.webContents.setWindowOpenHandler(({ url }) => {
     if (isSafeExternalUrl(url)) {
       setImmediate(() => {
         shell.openExternal(url);
@@ -109,18 +114,19 @@ async function openWindow() {
     return { action: "deny" };
   });
 
-  mainWindow.webContents.on("will-navigate", (event, navigationUrl) => {
+  window.webContents.on("will-navigate", (event, navigationUrl) => {
     if (!isAppUrl(navigationUrl)) {
       event.preventDefault();
     }
   });
 
-  mainWindow.once("closed", () => {
+  window.once("closed", () => {
     mainWindow = null;
     windowCreation = null;
   });
 
-  await mainWindow.loadURL(appUrl);
+  await window.loadURL(appUrl);
+  return window;
 }
 
 // With close-to-tray the process lingers after the window is gone, so a
@@ -168,7 +174,7 @@ app.on("before-quit", () => {
   }
 });
 
-function createTray() {
+function createTray(): void {
   tray = new Tray(join(__dirname, "tray-icon.png"));
   tray.setToolTip("PR Agent Reviewer");
   tray.setContextMenu(
@@ -187,19 +193,19 @@ function createTray() {
   tray.on("click", () => showMainWindow());
 }
 
-async function showMainWindow() {
+async function showMainWindow(): Promise<void> {
   if (mainWindow) {
     mainWindow.show();
     mainWindow.focus();
     return;
   }
 
-  await createWindow();
-  mainWindow?.show();
-  mainWindow?.focus();
+  const window = await createWindow();
+  window.show();
+  window.focus();
 }
 
-function isAppUrl(url) {
+function isAppUrl(url: string): boolean {
   if (!serverUrl) {
     return false;
   }
@@ -211,7 +217,7 @@ function isAppUrl(url) {
   }
 }
 
-function isSafeExternalUrl(url) {
+function isSafeExternalUrl(url: string): boolean {
   try {
     const parsed = new URL(url);
     return parsed.protocol === "https:" && parsed.hostname === "github.com";

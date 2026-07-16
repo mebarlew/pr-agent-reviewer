@@ -9,16 +9,19 @@
     "pr-agent-review": "./bin/pr-agent-review.js"
   },
   "scripts": {
-    "app": "node ./src/server.js",
-    "desktop": "electron .",
-    "check": "node --check bin/pr-agent-review.js && node --check electron/*.cjs && node --check scripts/*.cjs && node --check src/*.js && node --check src/providers/*.js && node --check src/review/*.js && node --check app/*.js && node --check test/*.test.js && node --check fixtures/*.js",
-    "smoke": "electron ./scripts/electron-smoke.cjs",
-    "test": "node --test"
+    "app": "tsc -p tsconfig.app.json && node ./src/server.ts",
+    "build": "tsc -p tsconfig.build.json && tsc -p tsconfig.scripts.json && tsc -p tsconfig.app.json",
+    "desktop": "npm run build && electron .",
+    "smoke": "npm run build && electron ./scripts/electron-smoke.cjs",
+    "test": "node --test",
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.scripts.json --noEmit && tsc -p tsconfig.app.json --noEmit"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22.18"
   },
   "devDependencies": {
-    "electron": "^43.0.0"
+    "@types/node": "^26.1.1",
+    "electron": "^43.0.0",
+    "typescript": "^7.0.2"
   }
 }

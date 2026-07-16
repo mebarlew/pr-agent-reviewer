@@ -8,7 +8,10 @@ test("buildProviderEnv does not pass GitHub tokens unless explicitly configured"
 
   try {
     assert.equal(buildProviderEnv().GITHUB_TOKEN, undefined);
-    assert.equal(buildProviderEnv({ GITHUB_TOKEN: "explicit" }).GITHUB_TOKEN, "explicit");
+    assert.equal(
+      buildProviderEnv({ GITHUB_TOKEN: "explicit" }).GITHUB_TOKEN,
+      "explicit",
+    );
   } finally {
     if (previous === undefined) {
       delete process.env.GITHUB_TOKEN;

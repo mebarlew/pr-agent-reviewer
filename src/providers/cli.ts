@@ -1,7 +1,17 @@
 import { spawn } from "node:child_process";
-import { buildProviderEnv, DEFAULT_PROVIDER_TIMEOUT_MS } from "./env.js";
+import type { ChildProcessWithoutNullStreams } from "node:child_process";
+import { buildProviderEnv, DEFAULT_PROVIDER_TIMEOUT_MS } from "./env.ts";
+import type { ProviderRunOptions, ProviderSpec } from "./env.ts";
 
-export async function runCliProvider(provider, { prompt, workspace }) {
+export interface CliProviderResult {
+  text: string;
+  stderr: string;
+}
+
+export async function runCliProvider(
+  provider: ProviderSpec,
+  { prompt, workspace }: ProviderRunOptions,
+): Promise<CliProviderResult> {
   const args = (provider.args ?? []).map((arg) =>
     arg === "{prompt}" ? prompt : arg,
   );
@@ -21,10 +31,10 @@ export async function runCliProvider(provider, { prompt, workspace }) {
   });
   child.stdout.setEncoding("utf8");
   child.stderr.setEncoding("utf8");
-  child.stdout.on("data", (chunk) => {
+  child.stdout.on("data", (chunk: string) => {
     stdout += chunk;
   });
-  child.stderr.on("data", (chunk) => {
+  child.stderr.on("data", (chunk: string) => {
     stderr += chunk;
   });
 
@@ -48,7 +58,11 @@ export async function runCliProvider(provider, { prompt, workspace }) {
   };
 }
 
-function waitForExit(child, timeoutMs, command) {
+function waitForExit(
+  child: ChildProcessWithoutNullStreams,
+  timeoutMs: number,
+  command: string,
+): Promise<number | null> {
   return new Promise((resolve, reject) => {
     let settled = false;
     const timeout = setTimeout(() => {
@@ -58,7 +72,7 @@ function waitForExit(child, timeoutMs, command) {
 
     timeout.unref?.();
 
-    function settleResolve(value) {
+    function settleResolve(value: number | null): void {
       if (settled) {
         return;
       }
@@ -68,7 +82,7 @@ function waitForExit(child, timeoutMs, command) {
       resolve(value);
     }
 
-    function settleReject(error) {
+    function settleReject(error: Error): void {
       if (settled) {
         return;
       }
@@ -83,7 +97,7 @@ function waitForExit(child, timeoutMs, command) {
   });
 }
 
-function terminate(child) {
+function terminate(child: ChildProcessWithoutNullStreams): void {
   if (child.exitCode !== null || child.killed) {
     return;
   }

@@ -4,7 +4,26 @@ import { cwd } from "node:process";
 
 export const DEFAULT_PROVIDER_TIMEOUT_MS = 10 * 60 * 1000;
 
-const DEFAULT_CONFIG = {
+export interface ProviderConfig {
+  type?: string;
+  command: string;
+  args: string[];
+  env: Record<string, string>;
+  timeoutMs?: number;
+  authMethod?: string;
+}
+
+export interface ReviewerConfig {
+  providers: Record<string, ProviderConfig>;
+}
+
+// Shape of the on-disk config file. It is external JSON, so nothing beyond
+// the top-level structure is guaranteed.
+interface UserConfig {
+  providers?: Record<string, Partial<ProviderConfig>>;
+}
+
+const DEFAULT_CONFIG: ReviewerConfig = {
   providers: {
     codex: {
       type: "acp",
@@ -19,18 +38,23 @@ const DEFAULT_CONFIG = {
       type: "acp",
       command: "claude-agent-acp",
       args: [],
+      env: {},
       timeoutMs: DEFAULT_PROVIDER_TIMEOUT_MS,
     },
     gemini: {
       type: "cli",
       command: "gemini",
       args: [],
+      env: {},
       timeoutMs: DEFAULT_PROVIDER_TIMEOUT_MS,
     },
   },
 };
 
-export async function loadConfig(configPath, searchDir) {
+export async function loadConfig(
+  configPath?: string,
+  searchDir?: string,
+): Promise<ReviewerConfig> {
   const path = configPath ? resolve(configPath) : await findConfig(searchDir);
 
   if (!path) {
@@ -38,12 +62,12 @@ export async function loadConfig(configPath, searchDir) {
   }
 
   const raw = await readFile(path, "utf8");
-  const userConfig = JSON.parse(raw);
+  const userConfig = JSON.parse(raw) as UserConfig;
 
   return mergeConfig(DEFAULT_CONFIG, userConfig);
 }
 
-async function findConfig(searchDir = cwd()) {
+async function findConfig(searchDir: string = cwd()): Promise<string | null> {
   const candidate = join(searchDir, ".pr-agent-reviewer.json");
 
   try {
@@ -54,9 +78,12 @@ async function findConfig(searchDir = cwd()) {
   }
 }
 
-function mergeConfig(defaultConfig, userConfig) {
+function mergeConfig(
+  defaultConfig: ReviewerConfig,
+  userConfig: UserConfig,
+): ReviewerConfig {
   const userProviders = userConfig.providers ?? {};
-  const providers = {};
+  const providers: Record<string, ProviderConfig> = {};
 
   for (const [name, provider] of Object.entries(defaultConfig.providers)) {
     providers[name] = mergeProvider(provider, userProviders[name]);
@@ -75,7 +102,13 @@ function mergeConfig(defaultConfig, userConfig) {
   };
 }
 
-function mergeProvider(defaultProvider, userProvider = {}) {
+// User providers are unvalidated JSON, so a merged provider may genuinely
+// lack a command; that failure surfaces when the provider is spawned, as it
+// did before the type migration.
+function mergeProvider(
+  defaultProvider: Partial<ProviderConfig>,
+  userProvider: Partial<ProviderConfig> = {},
+): ProviderConfig {
   return {
     ...defaultProvider,
     ...userProvider,
@@ -84,9 +117,9 @@ function mergeProvider(defaultProvider, userProvider = {}) {
       ...(defaultProvider.env ?? {}),
       ...(userProvider.env ?? {}),
     },
-  };
+  } as ProviderConfig;
 }
 
-function cloneConfig(config) {
+function cloneConfig(config: ReviewerConfig): ReviewerConfig {
   return mergeConfig(config, {});
 }

@@ -1,4 +1,121 @@
-const state = {
+declare global {
+  interface Window {
+    prAgent?: {
+      getAuthToken(): Promise<string>;
+      showWindow(): Promise<void>;
+    };
+  }
+}
+
+interface ProviderInfo {
+  name: string;
+  type: string;
+}
+
+interface GithubTokenStatus {
+  envGithubToken: boolean;
+  hasGithubToken: boolean;
+  hasStoredGithubToken: boolean;
+  canPersistGithubToken: boolean;
+  reason: string;
+}
+
+interface ConfigResult {
+  providers: ProviderInfo[];
+  workspace: string;
+  githubToken: GithubTokenStatus | null;
+}
+
+interface PullRequestLink {
+  number: number;
+  title: string;
+  htmlUrl: string;
+}
+
+interface RepoPullRequest extends PullRequestLink {
+  author: string;
+  reviewState: string;
+}
+
+interface ChangedFile {
+  filename: string;
+  status: string;
+  additions: number;
+  deletions: number;
+  patchAvailable: boolean;
+  patch: string;
+}
+
+interface Finding {
+  path: string;
+  line: number;
+  severity: string;
+  comment: string;
+  suggestion?: string;
+}
+
+interface ReviewRunResult {
+  reviewId: string;
+  files: ChangedFile[];
+  pullRequest: PullRequestLink;
+  review: {
+    summary: string;
+    findings: unknown[];
+    validationErrors?: string[];
+  };
+  inlineFindings: Finding[];
+  skippedFindings: Finding[];
+}
+
+interface PostReviewResult {
+  githubReviewId: number | null;
+  inlineComments: number;
+  summaryComments: number;
+}
+
+interface ReviewThread {
+  threadId: string;
+  isResolved: boolean;
+  resolvedBy: string | null;
+  path: string;
+  line: number | null;
+}
+
+interface GitStateResult {
+  root: string;
+  branch: string;
+  isDirty: boolean;
+  changedFiles: number;
+  github: {
+    base: { fullName: string };
+    remotes: { name: string }[];
+  } | null;
+  pullRequests: PullRequestLink[];
+}
+
+interface RepoPullsResult {
+  repository: { fullName: string };
+  pullRequests: RepoPullRequest[];
+}
+
+interface RequestOptions {
+  method?: string;
+  body?: unknown;
+}
+
+interface AppState {
+  files: ChangedFile[];
+  githubTokenStatus: GithubTokenStatus | null;
+  reviewId: string | null;
+  githubReviewId: number | null;
+  pullRequest: PullRequestLink | null;
+  repoPullRequests: RepoPullRequest[];
+  selectedFileIndex: number;
+  resolvedThreadIds: Set<string>;
+  threadPollTimer: ReturnType<typeof setInterval> | null;
+}
+
+const state: AppState = {
   files: [],
   githubTokenStatus: null,
   reviewId: null,
@@ -15,34 +132,41 @@ const THREAD_POLL_INTERVAL_MS = 20 * 60 * 1000;
 let authToken = "";
 
 const elements = {
-  commentsPanel: document.querySelector("#commentsPanel"),
-  clearGithubTokenButton: document.querySelector("#clearGithubTokenButton"),
-  copyPromptButton: document.querySelector("#copyPromptButton"),
-  counts: document.querySelector("#counts"),
-  filesPanel: document.querySelector("#filesPanel"),
-  gitPanel: document.querySelector("#gitPanel"),
-  githubToken: document.querySelector("#githubToken"),
-  githubTokenStatus: document.querySelector("#githubTokenStatus"),
-  loadRepoButton: document.querySelector("#loadRepoButton"),
-  postButton: document.querySelector("#postButton"),
-  providerName: document.querySelector("#providerName"),
-  providerStrip: document.querySelector("#providerStrip"),
-  promptPanel: document.querySelector("#promptPanel"),
-  prRef: document.querySelector("#prRef"),
-  prTitle: document.querySelector("#prTitle"),
-  repoMeta: document.querySelector("#repoMeta"),
-  repoPrList: document.querySelector("#repoPrList"),
-  repoRef: document.querySelector("#repoRef"),
-  readGitButton: document.querySelector("#readGitButton"),
-  reviewForm: document.querySelector("#reviewForm"),
-  runButton: document.querySelector("#runButton"),
-  saveGithubTokenButton: document.querySelector("#saveGithubTokenButton"),
-  statusText: document.querySelector("#statusText"),
-  summary: document.querySelector("#summary"),
-  workspace: document.querySelector("#workspace"),
+  commentsPanel: document.querySelector<HTMLDivElement>("#commentsPanel")!,
+  clearGithubTokenButton: document.querySelector<HTMLButtonElement>(
+    "#clearGithubTokenButton",
+  )!,
+  copyPromptButton:
+    document.querySelector<HTMLButtonElement>("#copyPromptButton")!,
+  counts: document.querySelector<HTMLDivElement>("#counts")!,
+  filesPanel: document.querySelector<HTMLDivElement>("#filesPanel")!,
+  gitPanel: document.querySelector<HTMLDivElement>("#gitPanel")!,
+  githubToken: document.querySelector<HTMLInputElement>("#githubToken")!,
+  githubTokenStatus:
+    document.querySelector<HTMLDivElement>("#githubTokenStatus")!,
+  loadRepoButton: document.querySelector<HTMLButtonElement>("#loadRepoButton")!,
+  postButton: document.querySelector<HTMLButtonElement>("#postButton")!,
+  providerName: document.querySelector<HTMLSelectElement>("#providerName")!,
+  providerStrip: document.querySelector<HTMLDivElement>("#providerStrip")!,
+  promptPanel: document.querySelector<HTMLPreElement>("#promptPanel")!,
+  prRef: document.querySelector<HTMLInputElement>("#prRef")!,
+  prTitle: document.querySelector<HTMLElement>("#prTitle")!,
+  repoMeta: document.querySelector<HTMLDivElement>("#repoMeta")!,
+  repoPrList: document.querySelector<HTMLDivElement>("#repoPrList")!,
+  repoRef: document.querySelector<HTMLInputElement>("#repoRef")!,
+  readGitButton: document.querySelector<HTMLButtonElement>("#readGitButton")!,
+  reviewForm: document.querySelector<HTMLFormElement>("#reviewForm")!,
+  runButton: document.querySelector<HTMLButtonElement>("#runButton")!,
+  saveGithubTokenButton: document.querySelector<HTMLButtonElement>(
+    "#saveGithubTokenButton",
+  )!,
+  statusText: document.querySelector<HTMLParagraphElement>("#statusText")!,
+  summary: document.querySelector<HTMLTextAreaElement>("#summary")!,
+  workspace: document.querySelector<HTMLInputElement>("#workspace")!,
 };
 
-const findingTemplate = document.querySelector("#findingTemplate");
+const findingTemplate =
+  document.querySelector<HTMLTemplateElement>("#findingTemplate")!;
 
 init();
 
@@ -52,13 +176,13 @@ async function init() {
 
   try {
     authToken = await resolveAuthToken();
-    const config = await requestJson("/api/config");
+    const config = await requestJson<ConfigResult>("/api/config");
     renderProviders(config.providers);
     elements.workspace.value = config.workspace;
     renderGithubTokenStatus(config.githubToken);
     setBusy(false, "Ready");
   } catch (error) {
-    setBusy(false, error.message);
+    setBusy(false, (error as Error).message);
   }
 }
 
@@ -110,7 +234,7 @@ function bindEvents() {
   elements.summary.addEventListener("input", refreshFixPrompt);
   elements.commentsPanel.addEventListener("input", refreshFixPrompt);
 
-  document.querySelectorAll(".tab").forEach((tab) => {
+  document.querySelectorAll<HTMLElement>(".tab").forEach((tab) => {
     tab.addEventListener("click", () => selectTab(tab.dataset.tab));
   });
 }
@@ -125,7 +249,7 @@ async function saveGithubToken() {
   setBusy(true, "Saving token");
 
   try {
-    const status = await requestJson("/api/github-token", {
+    const status = await requestJson<GithubTokenStatus>("/api/github-token", {
       method: "PUT",
       body: {
         githubToken,
@@ -136,7 +260,7 @@ async function saveGithubToken() {
     renderGithubTokenStatus(status);
     setBusy(false, "Token saved");
   } catch (error) {
-    setBusy(false, error.message);
+    setBusy(false, (error as Error).message);
   }
 }
 
@@ -144,7 +268,7 @@ async function clearGithubToken() {
   setBusy(true, "Forgetting token");
 
   try {
-    const status = await requestJson("/api/github-token", {
+    const status = await requestJson<GithubTokenStatus>("/api/github-token", {
       method: "DELETE",
     });
 
@@ -152,11 +276,11 @@ async function clearGithubToken() {
     renderGithubTokenStatus(status);
     setBusy(false, "Token forgotten");
   } catch (error) {
-    setBusy(false, error.message);
+    setBusy(false, (error as Error).message);
   }
 }
 
-function renderGithubTokenStatus(status) {
+function renderGithubTokenStatus(status: GithubTokenStatus | null) {
   state.githubTokenStatus = status ?? null;
 
   if (!status) {
@@ -203,7 +327,7 @@ async function readGitWorkspace() {
   setBusy(true, "Reading git");
 
   try {
-    const result = await requestJson("/api/git", {
+    const result = await requestJson<GitStateResult>("/api/git", {
       method: "POST",
       body: {
         workspace,
@@ -217,8 +341,8 @@ async function readGitWorkspace() {
       result.pullRequests.length > 0 ? "Local PR found" : "Git read",
     );
   } catch (error) {
-    renderGitError(error.message);
-    setBusy(false, error.message);
+    renderGitError((error as Error).message);
+    setBusy(false, (error as Error).message);
   }
 }
 
@@ -233,7 +357,7 @@ async function loadRepositoryPullRequests() {
   elements.repoPrList.replaceChildren();
 
   try {
-    const result = await requestJson("/api/github/pulls", {
+    const result = await requestJson<RepoPullsResult>("/api/github/pulls", {
       method: "POST",
       body: {
         repoRef,
@@ -247,8 +371,8 @@ async function loadRepositoryPullRequests() {
     renderRepoPullRequests();
     setBusy(false, "Choose a PR");
   } catch (error) {
-    setBusy(false, error.message);
-    elements.repoMeta.textContent = error.message;
+    setBusy(false, (error as Error).message);
+    elements.repoMeta.textContent = (error as Error).message;
   }
 }
 
@@ -257,7 +381,7 @@ async function runReview() {
   setBusy(true, "Running review");
 
   try {
-    const result = await requestJson("/api/reviews", {
+    const result = await requestJson<ReviewRunResult>("/api/reviews", {
       method: "POST",
       body: {
         prRef: elements.prRef.value,
@@ -298,7 +422,7 @@ async function runReview() {
     elements.postButton.disabled = false;
     setBusy(false, "Review ready");
   } catch (error) {
-    setBusy(false, error.message);
+    setBusy(false, (error as Error).message);
   }
 }
 
@@ -310,15 +434,18 @@ async function postSelected() {
   setBusy(true, "Posting comments");
 
   try {
-    const result = await requestJson(`/api/reviews/${state.reviewId}/post`, {
-      method: "POST",
-      body: {
-        summary: elements.summary.value,
-        inlineFindings: collectFindings("inline"),
-        skippedFindings: collectFindings("manual"),
-        githubToken: githubTokenOverride(),
+    const result = await requestJson<PostReviewResult>(
+      `/api/reviews/${state.reviewId}/post`,
+      {
+        method: "POST",
+        body: {
+          summary: elements.summary.value,
+          inlineFindings: collectFindings("inline"),
+          skippedFindings: collectFindings("manual"),
+          githubToken: githubTokenOverride(),
+        },
       },
-    });
+    );
 
     setBusy(
       false,
@@ -330,7 +457,7 @@ async function postSelected() {
       startThreadPolling();
     }
   } catch (error) {
-    setBusy(false, error.message);
+    setBusy(false, (error as Error).message);
   }
 }
 
@@ -362,16 +489,19 @@ async function pollReviewThreads() {
     return;
   }
 
-  let threads;
+  let threads: ReviewThread[];
   try {
-    const result = await requestJson("/api/review-threads", {
-      method: "POST",
-      body: {
-        prRef: state.pullRequest.htmlUrl,
-        reviewId: state.githubReviewId,
-        githubToken: githubTokenOverride(),
+    const result = await requestJson<{ threads: ReviewThread[] }>(
+      "/api/review-threads",
+      {
+        method: "POST",
+        body: {
+          prRef: state.pullRequest.htmlUrl,
+          reviewId: state.githubReviewId,
+          githubToken: githubTokenOverride(),
+        },
       },
-    });
+    );
     threads = result.threads;
   } catch {
     return;
@@ -392,14 +522,14 @@ async function pollReviewThreads() {
   }
 }
 
-function markFindingResolved(thread) {
+function markFindingResolved(thread: ReviewThread) {
   const nodes = elements.commentsPanel.querySelectorAll(
     `.finding[data-path="${CSS.escape(thread.path)}"][data-line="${CSS.escape(String(thread.line))}"]`,
   );
 
   for (const node of nodes) {
     node.classList.add("resolved");
-    const badge = node.querySelector(".finding-resolved");
+    const badge = node.querySelector<HTMLElement>(".finding-resolved")!;
     badge.textContent = thread.resolvedBy
       ? `Resolved by ${thread.resolvedBy}`
       : "Resolved";
@@ -407,7 +537,7 @@ function markFindingResolved(thread) {
   }
 }
 
-function notifyThreadResolved(thread) {
+function notifyThreadResolved(thread: ReviewThread) {
   const message = thread.resolvedBy
     ? `${thread.path}:${thread.line} resolved by ${thread.resolvedBy}`
     : `${thread.path}:${thread.line} resolved`;
@@ -436,7 +566,7 @@ async function copyFixPrompt() {
   }
 }
 
-function renderProviders(providers) {
+function renderProviders(providers: ProviderInfo[]) {
   elements.providerName.replaceChildren();
   elements.providerStrip.replaceChildren();
 
@@ -473,7 +603,7 @@ function renderRepoPullRequests() {
   }
 }
 
-function createPullRequestRow(pullRequest) {
+function createPullRequestRow(pullRequest: RepoPullRequest) {
   const button = document.createElement("button");
   button.type = "button";
   button.className = `repo-pr ${pullRequest.reviewState}`;
@@ -491,7 +621,7 @@ function createPullRequestRow(pullRequest) {
   return button;
 }
 
-function renderGitState(result) {
+function renderGitState(result: GitStateResult) {
   elements.gitPanel.className = "git-panel";
   elements.gitPanel.replaceChildren();
   elements.workspace.value = result.root || elements.workspace.value;
@@ -538,7 +668,7 @@ function renderGitState(result) {
   }
 }
 
-function renderGitError(message) {
+function renderGitError(message: string) {
   elements.gitPanel.className = "git-panel error";
   elements.gitPanel.replaceChildren();
 
@@ -551,7 +681,7 @@ function renderGitError(message) {
   elements.gitPanel.append(title, details);
 }
 
-function createLocalPullRequestButton(pullRequest) {
+function createLocalPullRequestButton(pullRequest: PullRequestLink) {
   const button = document.createElement("button");
   button.type = "button";
   button.className = "pr-candidate";
@@ -563,13 +693,13 @@ function createLocalPullRequestButton(pullRequest) {
   return button;
 }
 
-function selectPullRequest(pullRequest) {
+function selectPullRequest(pullRequest: PullRequestLink) {
   elements.prRef.value = pullRequest.htmlUrl;
   elements.prTitle.textContent = pullRequest.title;
   elements.statusText.textContent = `Selected PR #${pullRequest.number}`;
 }
 
-function renderFindingList(findings) {
+function renderFindingList(findings: (Finding & { kind: string })[]) {
   elements.commentsPanel.replaceChildren();
 
   if (findings.length === 0) {
@@ -578,27 +708,32 @@ function renderFindingList(findings) {
   }
 
   for (const finding of findings) {
-    const node = findingTemplate.content.firstElementChild.cloneNode(true);
+    const node = findingTemplate.content.firstElementChild!.cloneNode(
+      true,
+    ) as HTMLElement;
 
     node.dataset.path = finding.path;
     node.dataset.line = String(finding.line);
     node.dataset.kind = finding.kind;
     node.dataset.severity = finding.severity;
-    node.querySelector(".finding-location").textContent =
+    node.querySelector(".finding-location")!.textContent =
       `${finding.path}:${finding.line}`;
-    const severity = node.querySelector(".finding-severity");
+    const severity =
+      node.querySelector<HTMLSelectElement>(".finding-severity")!;
     severity.value = finding.severity;
     severity.addEventListener("change", () => {
       node.dataset.severity = severity.value;
       refreshFixPrompt();
     });
-    node.querySelector(".finding-comment").value = finding.comment;
-    node.querySelector(".finding-suggestion").value = finding.suggestion || "";
+    node.querySelector<HTMLTextAreaElement>(".finding-comment")!.value =
+      finding.comment;
+    node.querySelector<HTMLTextAreaElement>(".finding-suggestion")!.value =
+      finding.suggestion || "";
     elements.commentsPanel.append(node);
   }
 }
 
-function renderFileViewer(files) {
+function renderFileViewer(files: ChangedFile[]) {
   elements.filesPanel.replaceChildren();
   state.selectedFileIndex = Math.min(
     state.selectedFileIndex,
@@ -646,7 +781,7 @@ function renderFileViewer(files) {
   elements.filesPanel.append(layout);
 }
 
-function createFileRow(file, index) {
+function createFileRow(file: ChangedFile, index: number) {
   const button = document.createElement("button");
   button.type = "button";
   button.className = `file-row ${file.status ?? "changed"}`;
@@ -666,7 +801,7 @@ function createFileRow(file, index) {
   return button;
 }
 
-function createFileDiff(file) {
+function createFileDiff(file: ChangedFile) {
   const container = document.createElement("article");
   container.className = "file-diff";
 
@@ -704,7 +839,7 @@ function createFileDiff(file) {
   return container;
 }
 
-function diffLineClass(line) {
+function diffLineClass(line: string) {
   if (line.startsWith("@@")) {
     return "hunk";
   }
@@ -720,34 +855,59 @@ function diffLineClass(line) {
   return "context";
 }
 
-function collectFindings(kind) {
-  return [...elements.commentsPanel.querySelectorAll(".finding")]
+function collectFindings(kind: string) {
+  return [...elements.commentsPanel.querySelectorAll<HTMLElement>(".finding")]
     .filter((node) => node.dataset.kind === kind)
-    .filter((node) => node.querySelector(".finding-selected").checked)
+    .filter(
+      (node) =>
+        node.querySelector<HTMLInputElement>(".finding-selected")!.checked,
+    )
     .map((node) => ({
       path: node.dataset.path,
       line: Number(node.dataset.line),
-      severity: node.querySelector(".finding-severity").value,
-      comment: node.querySelector(".finding-comment").value,
-      suggestion: node.querySelector(".finding-suggestion").value,
+      severity:
+        node.querySelector<HTMLSelectElement>(".finding-severity")!.value,
+      comment:
+        node.querySelector<HTMLTextAreaElement>(".finding-comment")!.value,
+      suggestion: node.querySelector<HTMLTextAreaElement>(
+        ".finding-suggestion",
+      )!.value,
     }));
 }
 
 function refreshFixPrompt() {
-  const findings = [...elements.commentsPanel.querySelectorAll(".finding")]
-    .filter((node) => node.querySelector(".finding-selected").checked)
+  const findings = [
+    ...elements.commentsPanel.querySelectorAll<HTMLElement>(".finding"),
+  ]
+    .filter(
+      (node) =>
+        node.querySelector<HTMLInputElement>(".finding-selected")!.checked,
+    )
     .map((node) => ({
       path: node.dataset.path,
       line: node.dataset.line,
-      severity: node.querySelector(".finding-severity").value,
-      comment: node.querySelector(".finding-comment").value.trim(),
-      suggestion: node.querySelector(".finding-suggestion").value.trim(),
+      severity:
+        node.querySelector<HTMLSelectElement>(".finding-severity")!.value,
+      comment: node
+        .querySelector<HTMLTextAreaElement>(".finding-comment")!
+        .value.trim(),
+      suggestion: node
+        .querySelector<HTMLTextAreaElement>(".finding-suggestion")!
+        .value.trim(),
     }));
 
   elements.promptPanel.textContent = buildFixPrompt(findings);
 }
 
-function buildFixPrompt(findings) {
+function buildFixPrompt(
+  findings: {
+    path?: string;
+    line?: string | number;
+    severity: string;
+    comment: string;
+    suggestion: string;
+  }[],
+) {
   if (!state.pullRequest) {
     return "Run a review to generate a fix prompt.";
   }
@@ -773,8 +933,8 @@ function buildFixPrompt(findings) {
   return lines.join("\n").trim();
 }
 
-function selectTab(name) {
-  document.querySelectorAll(".tab").forEach((tab) => {
+function selectTab(name: string | undefined) {
+  document.querySelectorAll<HTMLElement>(".tab").forEach((tab) => {
     tab.classList.toggle("active", tab.dataset.tab === name);
   });
   document.querySelectorAll(".tab-panel").forEach((panel) => {
@@ -809,14 +969,14 @@ function clearResults() {
   );
 }
 
-function renderEmptyMessage(container, message) {
+function renderEmptyMessage(container: HTMLElement, message: string) {
   const empty = document.createElement("p");
   empty.className = "empty";
   empty.textContent = message;
   container.append(empty);
 }
 
-function setBusy(isBusy, message) {
+function setBusy(isBusy: boolean, message: string) {
   elements.runButton.disabled = isBusy;
   elements.loadRepoButton.disabled = isBusy;
   elements.readGitButton.disabled = isBusy;
@@ -830,15 +990,18 @@ function setBusy(isBusy, message) {
   document.body.classList.toggle("busy", isBusy);
 }
 
-function isRepoRef(value) {
+function isRepoRef(value: string) {
   const trimmed = value.trim();
   return (
     Boolean(trimmed) && !trimmed.includes("/pull/") && !trimmed.includes("#")
   );
 }
 
-async function requestJson(path, options = {}) {
-  const headers = {};
+async function requestJson<T>(
+  path: string,
+  options: RequestOptions = {},
+): Promise<T> {
+  const headers: Record<string, string> = {};
 
   if (options.body) {
     headers["Content-Type"] = "application/json";
@@ -853,7 +1016,7 @@ async function requestJson(path, options = {}) {
     headers,
     body: options.body ? JSON.stringify(options.body) : undefined,
   });
-  const payload = await response.json();
+  const payload = (await response.json()) as T & { error?: string };
 
   if (!response.ok) {
     throw new Error(payload.error || "Request failed");

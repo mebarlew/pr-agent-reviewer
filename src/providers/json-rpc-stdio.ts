@@ -1,16 +1,63 @@
 import { spawn } from "node:child_process";
+import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { createInterface } from "node:readline";
-import { buildProviderEnv, DEFAULT_PROVIDER_TIMEOUT_MS } from "./env.js";
+import { buildProviderEnv, DEFAULT_PROVIDER_TIMEOUT_MS } from "./env.ts";
 
-export class JsonRpcStdioClient extends EventEmitter {
-  #child;
-  #closed;
+export interface JsonRpcRequest {
+  jsonrpc: "2.0";
+  id: number | string;
+  method: string;
+  params?: unknown;
+}
+
+export interface JsonRpcNotification {
+  jsonrpc: "2.0";
+  method: string;
+  params?: unknown;
+}
+
+// A message read off the agent's stdout. The shape is only trusted after the
+// structural checks in #handleLine.
+interface JsonRpcIncoming {
+  id?: number | string;
+  method?: string;
+  result?: unknown;
+  error?: { message?: string };
+}
+
+interface PendingRequest {
+  resolve: (value: unknown) => void;
+  reject: (error: Error) => void;
+}
+
+interface JsonRpcStdioClientOptions {
+  command: string;
+  args?: string[];
+  cwd?: string;
+  env?: Record<string, string>;
+}
+
+type JsonRpcStdioClientEvents = {
+  notification: [JsonRpcNotification];
+  request: [JsonRpcRequest];
+  stderr: [string];
+  protocolError: [Error];
+};
+
+export class JsonRpcStdioClient extends EventEmitter<JsonRpcStdioClientEvents> {
+  #child: ChildProcessWithoutNullStreams;
+  #closed: Promise<unknown>;
   #nextId = 1;
-  #pending = new Map();
+  #pending = new Map<number | string, PendingRequest>();
   #stderr = "";
 
-  constructor({ command, args = [], cwd, env = {} }) {
+  constructor({
+    command,
+    args = [],
+    cwd,
+    env = {},
+  }: JsonRpcStdioClientOptions) {
     super();
 
     this.#child = spawn(command, args, {
@@ -26,7 +73,7 @@ export class JsonRpcStdioClient extends EventEmitter {
       // The child may exit before draining stdin; pending requests are rejected on close.
     });
     this.#child.stderr.setEncoding("utf8");
-    this.#child.stderr.on("data", (chunk) => {
+    this.#child.stderr.on("data", (chunk: string) => {
       this.#stderr += chunk;
       this.emit("stderr", chunk);
     });
@@ -45,15 +92,19 @@ export class JsonRpcStdioClient extends EventEmitter {
     lines.on("line", (line) => this.#handleLine(line));
   }
 
-  get stderr() {
+  get stderr(): string {
     return this.#stderr;
   }
 
-  request(method, params, timeoutMs = DEFAULT_PROVIDER_TIMEOUT_MS) {
+  request<T = unknown>(
+    method: string,
+    params: unknown,
+    timeoutMs: number = DEFAULT_PROVIDER_TIMEOUT_MS,
+  ): Promise<T> {
     const id = this.#nextId;
     this.#nextId += 1;
 
-    return new Promise((resolve, reject) => {
+    return new Promise<T>((resolve, reject) => {
       const timeout = setTimeout(() => {
         this.#pending.delete(id);
         reject(new Error(`${method} timed out after ${timeoutMs}ms.`));
@@ -64,7 +115,7 @@ export class JsonRpcStdioClient extends EventEmitter {
       this.#pending.set(id, {
         resolve: (value) => {
           clearTimeout(timeout);
-          resolve(value);
+          resolve(value as T);
         },
         reject: (error) => {
           clearTimeout(timeout);
@@ -87,7 +138,7 @@ export class JsonRpcStdioClient extends EventEmitter {
     });
   }
 
-  notify(method, params) {
+  notify(method: string, params: unknown): void {
     this.#write({
       jsonrpc: "2.0",
       method,
@@ -95,7 +146,7 @@ export class JsonRpcStdioClient extends EventEmitter {
     });
   }
 
-  respond(id, result) {
+  respond(id: number | string, result: unknown): void {
     this.#write({
       jsonrpc: "2.0",
       id,
@@ -103,7 +154,7 @@ export class JsonRpcStdioClient extends EventEmitter {
     });
   }
 
-  async close() {
+  async close(): Promise<void> {
     try {
       this.#child.stdin.end();
     } catch {
@@ -126,15 +177,15 @@ export class JsonRpcStdioClient extends EventEmitter {
     clearTimeout(killTimer);
   }
 
-  #handleLine(line) {
+  #handleLine(line: string): void {
     if (!line.trim()) {
       return;
     }
 
-    let message;
+    let message: JsonRpcIncoming;
     try {
-      message = JSON.parse(line);
-    } catch (error) {
+      message = JSON.parse(line) as JsonRpcIncoming;
+    } catch {
       this.emit("protocolError", new Error(`Invalid JSON-RPC line: ${line}`));
       return;
     }
@@ -144,12 +195,12 @@ export class JsonRpcStdioClient extends EventEmitter {
       (Object.hasOwn(message, "result") || Object.hasOwn(message, "error"));
 
     if (isResponse) {
-      const pending = this.#pending.get(message.id);
+      const pending = this.#pending.get(message.id as number | string);
       if (!pending) {
         return;
       }
 
-      this.#pending.delete(message.id);
+      this.#pending.delete(message.id as number | string);
 
       if (message.error) {
         pending.reject(new Error(message.error.message ?? "JSON-RPC error"));
@@ -161,20 +212,20 @@ export class JsonRpcStdioClient extends EventEmitter {
     }
 
     if (message.method && Object.hasOwn(message, "id")) {
-      this.emit("request", message);
+      this.emit("request", message as JsonRpcRequest);
       return;
     }
 
     if (message.method) {
-      this.emit("notification", message);
+      this.emit("notification", message as JsonRpcNotification);
     }
   }
 
-  #write(message) {
+  #write(message: object): void {
     this.#child.stdin.write(`${JSON.stringify(message)}\n`);
   }
 
-  #rejectAll(error) {
+  #rejectAll(error: Error): void {
     for (const pending of this.#pending.values()) {
       pending.reject(error);
     }
@@ -183,7 +234,7 @@ export class JsonRpcStdioClient extends EventEmitter {
   }
 }
 
-function wait(ms) {
+function wait(ms: number): Promise<void> {
   return new Promise((resolve) => {
     const timeout = setTimeout(resolve, ms);
     timeout.unref?.();

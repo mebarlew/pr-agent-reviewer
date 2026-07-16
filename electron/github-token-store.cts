@@ -1,11 +1,26 @@
-const { mkdir, readFile, rm, writeFile } = require("node:fs/promises");
-const { dirname, join } = require("node:path");
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import type { App, SafeStorage } from "electron";
+import type {
+  GithubTokenStore,
+  GithubTokenStoreStatus,
+} from "../src/server.ts";
 
 const TOKEN_FILE = "github-token.safe";
 
-function createGithubTokenStore({ app, safeStorage }) {
+interface GithubTokenStoreDeps {
+  app: App;
+  safeStorage: SafeStorage;
+}
+
+type StorageStatus = Omit<GithubTokenStoreStatus, "hasStoredGithubToken">;
+
+export function createGithubTokenStore({
+  app,
+  safeStorage,
+}: GithubTokenStoreDeps): GithubTokenStore {
   const tokenPath = join(app.getPath("userData"), TOKEN_FILE);
-  let cachedToken;
+  let cachedToken: string | undefined;
 
   return {
     clearToken,
@@ -14,7 +29,7 @@ function createGithubTokenStore({ app, safeStorage }) {
     status,
   };
 
-  async function status() {
+  async function status(): Promise<GithubTokenStoreStatus> {
     const storage = await getStorageStatus();
 
     return {
@@ -23,7 +38,7 @@ function createGithubTokenStore({ app, safeStorage }) {
     };
   }
 
-  async function getToken() {
+  async function getToken(): Promise<string> {
     if (cachedToken !== undefined) {
       return cachedToken;
     }
@@ -32,7 +47,7 @@ function createGithubTokenStore({ app, safeStorage }) {
     try {
       encoded = await readFile(tokenPath, "utf8");
     } catch (error) {
-      if (error.code === "ENOENT") {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
         cachedToken = "";
         return cachedToken;
       }
@@ -53,7 +68,7 @@ function createGithubTokenStore({ app, safeStorage }) {
     return cachedToken;
   }
 
-  async function saveToken(token) {
+  async function saveToken(token: string): Promise<void> {
     const cleanToken = typeof token === "string" ? token.trim() : "";
     if (!cleanToken) {
       throw new Error("GitHub token is required.");
@@ -66,17 +81,17 @@ function createGithubTokenStore({ app, safeStorage }) {
     cachedToken = cleanToken;
   }
 
-  async function clearToken() {
+  async function clearToken(): Promise<void> {
     cachedToken = "";
     await rm(tokenPath, { force: true });
   }
 
-  async function hasTokenFile() {
+  async function hasTokenFile(): Promise<boolean> {
     try {
       await readFile(tokenPath);
       return true;
     } catch (error) {
-      if (error.code === "ENOENT") {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
         return false;
       }
 
@@ -84,7 +99,7 @@ function createGithubTokenStore({ app, safeStorage }) {
     }
   }
 
-  async function assertSecureStorage() {
+  async function assertSecureStorage(): Promise<void> {
     const storage = await getStorageStatus();
 
     if (!storage.secureStorageAvailable) {
@@ -92,7 +107,7 @@ function createGithubTokenStore({ app, safeStorage }) {
     }
   }
 
-  async function getStorageStatus() {
+  async function getStorageStatus(): Promise<StorageStatus> {
     if (typeof safeStorage.isAsyncEncryptionAvailable !== "function") {
       return {
         secureStorageAvailable: false,
@@ -130,7 +145,3 @@ function createGithubTokenStore({ app, safeStorage }) {
     };
   }
 }
-
-module.exports = {
-  createGithubTokenStore,
-};

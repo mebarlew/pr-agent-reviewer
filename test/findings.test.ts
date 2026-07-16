@@ -5,6 +5,7 @@ import {
   parseAgentReview,
   splitInlineFindings,
 } from "../src/review/findings.js";
+import type { Finding } from "../src/review/schema.js";
 
 test("parseAgentReview extracts fenced JSON and normalizes findings", () => {
   const review = parseAgentReview(`Here you go:
@@ -64,7 +65,7 @@ test("parseAgentReview rejects output when every finding is invalid", () => {
 
 test("splitInlineFindings keeps only changed lines inline", () => {
   const changedLines = new Map([["src/app.js", new Set([12])]]);
-  const findings = [
+  const findings: Finding[] = [
     { path: "src/app.js", line: 12, severity: "bug", comment: "Inline" },
     { path: "src/app.js", line: 20, severity: "test", comment: "Skipped" },
   ];
@@ -85,8 +86,12 @@ test("buildReviewMarkdown includes inline and skipped findings", () => {
     providerName: "codex",
     pullRequest: { htmlUrl: "https://github.com/acme/widgets/pull/42" },
     review: { summary: "Looks risky." },
-    inlineFindings: [{ path: "src/app.js", line: 12, severity: "bug", comment: "Inline" }],
-    skippedFindings: [{ path: "src/app.js", line: 20, severity: "test", comment: "Skipped" }],
+    inlineFindings: [
+      { path: "src/app.js", line: 12, severity: "bug", comment: "Inline" },
+    ],
+    skippedFindings: [
+      { path: "src/app.js", line: 20, severity: "test", comment: "Skipped" },
+    ],
   });
 
   assert.match(markdown, /AI PR review \(codex\)/);

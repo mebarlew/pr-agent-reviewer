@@ -11,7 +11,7 @@ test("runAcpProvider sends a prompt and collects agent text chunks", async () =>
     {
       type: "acp",
       command: process.execPath,
-      args: [join(__dirname, "../fixtures/fake-acp-agent.js")],
+      args: [join(__dirname, "../fixtures/fake-acp-agent.ts")],
     },
     {
       prompt: "Review this diff",
@@ -38,7 +38,7 @@ test("runAcpProvider survives malformed updates and keeps tool output out of the
     {
       type: "acp",
       command: process.execPath,
-      args: [join(__dirname, "../fixtures/fake-acp-agent.js")],
+      args: [join(__dirname, "../fixtures/fake-acp-agent.ts")],
     },
     {
       prompt: "Review this diff (noisy)",

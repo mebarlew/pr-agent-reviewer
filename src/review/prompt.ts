@@ -1,4 +1,11 @@
-export function buildReviewPrompt(context) {
+import type { ChangedFile } from "../github.ts";
+
+export interface ReviewPromptContext {
+  pullRequest: { title: string; baseRef: string; headRef: string };
+  files: ChangedFile[];
+}
+
+export function buildReviewPrompt(context: ReviewPromptContext): string {
   const files = context.files.map(formatFile).join("\n\n");
 
   return `You are reviewing a GitHub pull request. Find real bugs, security issues, broken edge cases, missing tests for changed behavior, and maintainability problems that would matter before merge.
@@ -33,7 +40,7 @@ ${files}
 `;
 }
 
-function formatFile(file) {
+function formatFile(file: ChangedFile): string {
   const diff =
     file.patchAvailable === false
       ? "Patch unavailable from GitHub for this file, usually because it is binary or too large. Do not create line comments for this file unless another diff shows the changed line."

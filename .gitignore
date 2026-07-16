@@ -3,3 +3,11 @@ node_modules/
 .env
 .pr-agent-reviewer.json
 coverage/
+
+# TypeScript build output (emitted in place by `npm run build`)
+*.tsbuildinfo
+app/app.js
+bin/*.js
+electron/*.cjs
+scripts/*.cjs
+src/**/*.js

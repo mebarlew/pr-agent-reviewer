@@ -1,6 +1,6 @@
 import { cwd } from "node:process";
-import { parsePullRequestRef } from "./github.js";
-import { postReview, runReview } from "./review/service.js";
+import { parsePullRequestRef } from "./github.ts";
+import { postReview, runReview } from "./review/service.ts";
 
 const usage = `Usage:
   pr-agent-review review <pr-url|owner/repo#number> --provider <name> [--post] [--workspace <path>] [--config <path>]
@@ -13,7 +13,17 @@ Environment:
   GITHUB_TOKEN is required for private repos and for --post.
 `;
 
-export async function main(argv) {
+interface ParsedArgs {
+  _: string[];
+  help?: boolean;
+  post?: boolean;
+  provider?: string;
+  workspace?: string;
+  config?: string;
+  [key: string]: string | boolean | string[] | undefined;
+}
+
+export async function main(argv: string[]): Promise<void> {
   const args = parseArgs(argv);
 
   if (args.help || args._[0] !== "review" || !args._[1]) {
@@ -50,8 +60,8 @@ export async function main(argv) {
   console.log(result.markdown);
 }
 
-function parseArgs(argv) {
-  const parsed = { _: [] };
+function parseArgs(argv: string[]): ParsedArgs {
+  const parsed: ParsedArgs = { _: [] };
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -85,7 +95,7 @@ function parseArgs(argv) {
   return parsed;
 }
 
-function required(value, message) {
+function required(value: string | undefined, message: string): string {
   if (!value) {
     throw new Error(message);
   }
@@ -93,6 +103,8 @@ function required(value, message) {
   return value;
 }
 
-function toCamelCase(value) {
-  return value.replaceAll(/-([a-z])/g, (_, letter) => letter.toUpperCase());
+function toCamelCase(value: string): string {
+  return value.replaceAll(/-([a-z])/g, (_, letter: string) =>
+    letter.toUpperCase(),
+  );
 }

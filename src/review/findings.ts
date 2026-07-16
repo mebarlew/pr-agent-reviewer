@@ -1,10 +1,33 @@
-import { normalizeFinding, stringValue } from "./schema.js";
+import { normalizeFinding } from "./schema.ts";
+import type { Finding } from "./schema.ts";
+import type { ChangedLineIndex } from "../github.ts";
 
-export function parseAgentReview(text) {
-  const parsed = JSON.parse(extractJson(text));
-  const rawFindings = Array.isArray(parsed.findings) ? parsed.findings : [];
-  const findings = [];
-  const validationErrors = [];
+export interface AgentReview {
+  summary: string;
+  findings: Finding[];
+  validationErrors: string[];
+}
+
+export type SkippedFinding = Finding & { skipReason: string };
+
+export interface ReviewMarkdownInput {
+  providerName: string;
+  pullRequest: { htmlUrl: string };
+  review: { summary?: string; validationErrors?: string[] };
+  inlineFindings: Finding[];
+  skippedFindings: Finding[];
+}
+
+export function parseAgentReview(text: string): AgentReview {
+  const parsed = JSON.parse(extractJson(text)) as {
+    summary?: unknown;
+    findings?: unknown;
+  };
+  const rawFindings: unknown[] = Array.isArray(parsed.findings)
+    ? parsed.findings
+    : [];
+  const findings: Finding[] = [];
+  const validationErrors: string[] = [];
 
   rawFindings.forEach((finding, index) => {
     const normalized = normalizeFinding(finding);
@@ -32,9 +55,12 @@ export function parseAgentReview(text) {
   };
 }
 
-export function splitInlineFindings(findings, changedLines) {
-  const inline = [];
-  const skipped = [];
+export function splitInlineFindings(
+  findings: Finding[],
+  changedLines: ChangedLineIndex,
+): { inline: Finding[]; skipped: SkippedFinding[] } {
+  const inline: Finding[] = [];
+  const skipped: SkippedFinding[] = [];
 
   for (const finding of findings) {
     const fileLines = changedLines.get(finding.path);
@@ -58,7 +84,7 @@ export function buildReviewMarkdown({
   review,
   inlineFindings,
   skippedFindings,
-}) {
+}: ReviewMarkdownInput): string {
   const lines = [
     `## AI PR review (${providerName})`,
     "",
@@ -81,17 +107,17 @@ export function buildReviewMarkdown({
     }
   }
 
-  if (review.validationErrors?.length > 0) {
+  if ((review.validationErrors?.length ?? 0) > 0) {
     lines.push(
       "",
-      `Invalid findings ignored: ${review.validationErrors.length}`,
+      `Invalid findings ignored: ${review.validationErrors?.length}`,
     );
   }
 
   return `${lines.join("\n")}\n`;
 }
 
-function extractJson(text) {
+function extractJson(text: string): string {
   const trimmed = text.trim();
 
   if (trimmed.startsWith("{")) {
