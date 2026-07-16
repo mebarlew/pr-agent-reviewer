@@ -288,10 +288,12 @@ async function handlePostReview(
   const inlineFindings = cleanFindings(
     body.inlineFindings,
     cached.inlineFindings,
+    "inlineFindings",
   );
   const skippedFindings = cleanFindings(
     body.skippedFindings,
     cached.skippedFindings,
+    "skippedFindings",
   );
   const githubToken = await resolveGithubToken(body, githubTokenStore);
   const posted = await postReview({
@@ -391,7 +393,7 @@ function pruneReviews(now) {
   }
 }
 
-function cleanFindings(input, fallback) {
+function cleanFindings(input, fallback, label) {
   if (!Array.isArray(input)) {
     return fallback;
   }
@@ -399,12 +401,19 @@ function cleanFindings(input, fallback) {
   const allowed = new Set(fallback.map((finding) => findingKey(finding)));
 
   return input
-    .map((finding) => cleanFinding(finding))
-    .filter((finding) => finding && allowed.has(findingKey(finding)));
-}
+    .map((finding, index) => {
+      const normalized = normalizeFinding(finding);
 
-function cleanFinding(finding) {
-  return normalizeFinding(finding);
+      if (!normalized) {
+        throw new HttpError(
+          400,
+          `${label}[${index}] is invalid. Each finding needs a path, line, severity, and a non-empty comment.`,
+        );
+      }
+
+      return normalized;
+    })
+    .filter((finding) => allowed.has(findingKey(finding)));
 }
 
 async function resolveGithubToken(body, githubTokenStore) {
@@ -503,6 +512,10 @@ function readJson(request, maxBodyBytes) {
             `Request body too large. Max ${maxBodyBytes} bytes.`,
           ),
         );
+        // Stop draining the oversized body; give the 413 response a tick to
+        // flush before tearing the socket down.
+        request.pause();
+        setImmediate(() => request.destroy());
         return;
       }
 

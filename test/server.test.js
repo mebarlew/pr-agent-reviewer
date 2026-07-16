@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
 import { once } from "node:events";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { createConnection } from "node:net";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import { createAppServer } from "../src/server.js";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 test("api requests require the local auth token", async () => {
   await withServer({ authToken: "secret" }, async (baseUrl) => {
@@ -52,6 +59,42 @@ test("api requests enforce the body size cap", async () => {
 
       assert.equal(response.status, 413);
       assert.match((await response.json()).error, /Request body too large/);
+    },
+  );
+});
+
+test("api requests tear down the socket after exceeding the body cap", async () => {
+  await withServer(
+    { authToken: "secret", maxBodyBytes: 32 },
+    async (baseUrl) => {
+      const port = Number(new URL(baseUrl).port);
+      const socket = createConnection({ host: "127.0.0.1", port });
+      await once(socket, "connect");
+
+      const body = JSON.stringify({ workspace: "x".repeat(64) });
+      socket.write(
+        [
+          "POST /api/git HTTP/1.1",
+          "Host: 127.0.0.1",
+          "Content-Type: application/json",
+          "X-PR-Agent-Token: secret",
+          `Content-Length: ${body.length + 1024}`,
+          "",
+          body,
+        ].join("\r\n"),
+      );
+
+      let received = "";
+      socket.on("data", (chunk) => {
+        received += chunk;
+      });
+
+      // Without request.destroy() the server keeps the socket open waiting
+      // for the remaining declared body until the keep-alive timeout (5s).
+      const startedAt = Date.now();
+      await once(socket, "close");
+      assert.match(received, /413/);
+      assert.ok(Date.now() - startedAt < 2000, "socket was not torn down");
     },
   );
 });
@@ -178,6 +221,97 @@ test("review threads endpoint validates its input", async () => {
   });
 });
 
+test("review runs resolve providers from the workspace and posts reject invalid findings", async () => {
+  const workspace = await mkdtemp(join(tmpdir(), "pr-agent-reviewer-"));
+  const originalFetch = globalThis.fetch;
+
+  try {
+    await writeFile(
+      join(workspace, ".pr-agent-reviewer.json"),
+      JSON.stringify({
+        providers: {
+          fake: {
+            type: "acp",
+            command: process.execPath,
+            args: [join(__dirname, "../fixtures/fake-acp-agent.js")],
+          },
+        },
+      }),
+    );
+
+    globalThis.fetch = (url, options) => {
+      const target = String(url);
+
+      if (target === "https://api.github.com/repos/acme/widgets/pulls/42") {
+        return jsonResponse({
+          title: "Widget PR",
+          html_url: "https://github.com/acme/widgets/pull/42",
+          head: { sha: "abc123", ref: "feature" },
+          base: { ref: "main" },
+        });
+      }
+
+      if (
+        target.startsWith(
+          "https://api.github.com/repos/acme/widgets/pulls/42/files",
+        )
+      ) {
+        return jsonResponse([
+          {
+            filename: "src/app.js",
+            status: "modified",
+            additions: 1,
+            deletions: 0,
+            changes: 1,
+            patch: "@@ -1,1 +1,2 @@\n context\n+new line",
+          },
+        ]);
+      }
+
+      return originalFetch(url, options);
+    };
+
+    await withServer({ authToken: "secret" }, async (baseUrl) => {
+      const run = await fetch(`${baseUrl}/api/reviews`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-PR-Agent-Token": "secret",
+        },
+        body: JSON.stringify({
+          prRef: "acme/widgets#42",
+          providerName: "fake",
+          workspace,
+        }),
+      });
+
+      assert.equal(run.status, 200);
+      const review = await run.json();
+      assert.equal(review.inlineFindings.length, 1);
+
+      const post = await fetch(
+        `${baseUrl}/api/reviews/${review.reviewId}/post`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-PR-Agent-Token": "secret",
+          },
+          body: JSON.stringify({
+            inlineFindings: [{ ...review.inlineFindings[0], comment: "" }],
+          }),
+        },
+      );
+
+      assert.equal(post.status, 400);
+      assert.match((await post.json()).error, /inlineFindings\[0\] is invalid/);
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+    await rm(workspace, { recursive: true, force: true });
+  }
+});
+
 async function withServer(options, run) {
   const server = createAppServer(options);
   server.listen(0, "127.0.0.1");
@@ -192,6 +326,15 @@ async function withServer(options, run) {
       server.close(resolve);
     });
   }
+}
+
+function jsonResponse(body) {
+  return new Response(JSON.stringify(body), {
+    status: 200,
+    headers: {
+      "Content-Type": "application/json",
+    },
+  });
 }
 
 function createFakeGithubTokenStore() {
