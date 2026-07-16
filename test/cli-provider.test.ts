@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { runCliProvider } from "../src/providers/cli.js";
+import { runCliProvider } from "../src/providers/cli.ts";
 
 test("runCliProvider rejects gracefully when the command exits without reading stdin", async () => {
   await assert.rejects(

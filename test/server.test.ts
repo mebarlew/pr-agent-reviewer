@@ -7,11 +7,11 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { createAppServer } from "../src/server.js";
+import { createAppServer } from "../src/server.ts";
 import type {
   CreateAppServerOptions,
   GithubTokenStore,
-} from "../src/server.js";
+} from "../src/server.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 

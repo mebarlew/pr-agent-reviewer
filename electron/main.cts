@@ -13,7 +13,7 @@ import {
   shell,
   Tray,
 } from "electron";
-import { createGithubTokenStore } from "./github-token-store.cjs";
+const { createGithubTokenStore } = require("./github-token-store.cjs");
 import type { GithubTokenStore } from "../src/server.ts";
 
 const authToken = randomUUID();

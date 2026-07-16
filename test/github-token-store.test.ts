@@ -8,7 +8,7 @@ import test from "node:test";
 const require = createRequire(import.meta.url);
 const {
   createGithubTokenStore,
-} = require("../electron/github-token-store.cjs");
+} = require("../electron/github-token-store.cts");
 
 test("github token store encrypts, reads, and clears a token", async () => {
   const dir = await mkdtemp(join(tmpdir(), "pr-agent-token-"));

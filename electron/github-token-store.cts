@@ -1,5 +1,5 @@
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+const { mkdir, readFile, rm, writeFile } = require("node:fs/promises");
+const { dirname, join } = require("node:path");
 import type { App, SafeStorage } from "electron";
 import type {
   GithubTokenStore,
@@ -15,7 +15,7 @@ interface GithubTokenStoreDeps {
 
 type StorageStatus = Omit<GithubTokenStoreStatus, "hasStoredGithubToken">;
 
-export function createGithubTokenStore({
+function createGithubTokenStore({
   app,
   safeStorage,
 }: GithubTokenStoreDeps): GithubTokenStore {
@@ -145,3 +145,5 @@ export function createGithubTokenStore({
     };
   }
 }
+
+module.exports = { createGithubTokenStore };

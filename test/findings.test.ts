@@ -4,8 +4,8 @@ import {
   buildReviewMarkdown,
   parseAgentReview,
   splitInlineFindings,
-} from "../src/review/findings.js";
-import type { Finding } from "../src/review/schema.js";
+} from "../src/review/findings.ts";
+import type { Finding } from "../src/review/schema.ts";
 
 test("parseAgentReview extracts fenced JSON and normalizes findings", () => {
   const review = parseAgentReview(`Here you go:

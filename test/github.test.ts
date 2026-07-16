@@ -9,7 +9,7 @@ import {
   parseChangedLines,
   parsePullRequestRef,
   parseRepositoryRef,
-} from "../src/github.js";
+} from "../src/github.ts";
 
 test("parseRepositoryRef accepts GitHub repo URLs", () => {
   assert.deepEqual(parseRepositoryRef("https://github.com/acme/widgets"), {

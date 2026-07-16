@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildProviderEnv } from "../src/providers/env.js";
+import { buildProviderEnv } from "../src/providers/env.ts";
 
 test("buildProviderEnv does not pass GitHub tokens unless explicitly configured", () => {
   const previous = process.env.GITHUB_TOKEN;

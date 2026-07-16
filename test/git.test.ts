@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parseGitHubRemoteUrl, parseRemoteList } from "../src/git.js";
+import { parseGitHubRemoteUrl, parseRemoteList } from "../src/git.ts";
 
 test("parseGitHubRemoteUrl supports GitHub SSH remotes", () => {
   assert.deepEqual(parseGitHubRemoteUrl("git@github.com:acme/widgets.git"), {

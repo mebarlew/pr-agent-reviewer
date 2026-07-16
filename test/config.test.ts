@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { loadConfig } from "../src/config.js";
+import { loadConfig } from "../src/config.ts";
 
 test("loadConfig deep merges provider overrides", async () => {
   const dir = await mkdtemp(join(tmpdir(), "pr-agent-reviewer-"));

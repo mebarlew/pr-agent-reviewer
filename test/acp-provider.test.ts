@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
-import { runAcpProvider } from "../src/providers/acp.js";
+import { runAcpProvider } from "../src/providers/acp.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -53,7 +53,7 @@ test("runAcpProvider survives malformed updates and keeps tool output out of the
 
 test("JsonRpcStdioClient rejects pending requests when the agent exits without reading stdin", async () => {
   const { JsonRpcStdioClient } =
-    await import("../src/providers/json-rpc-stdio.js");
+    await import("../src/providers/json-rpc-stdio.ts");
   const client = new JsonRpcStdioClient({
     command: process.execPath,
     args: ["-e", "setTimeout(() => process.exit(3), 100)"],
@@ -76,7 +76,7 @@ test("JsonRpcStdioClient rejects pending requests when the agent exits without r
 
 test("JsonRpcStdioClient rejects pending requests when the agent exits cleanly", async () => {
   const { JsonRpcStdioClient } =
-    await import("../src/providers/json-rpc-stdio.js");
+    await import("../src/providers/json-rpc-stdio.ts");
   const client = new JsonRpcStdioClient({
     command: process.execPath,
     args: ["-e", "setTimeout(() => process.exit(0), 100)"],
