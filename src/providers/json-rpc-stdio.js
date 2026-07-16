@@ -32,10 +32,10 @@ export class JsonRpcStdioClient extends EventEmitter {
     });
     this.#child.once("error", (error) => this.#rejectAll(error));
     this.#child.once("close", (code) => {
-      if (code !== 0 && this.#pending.size > 0) {
+      if (this.#pending.size > 0) {
         this.#rejectAll(
           new Error(
-            `${command} exited with code ${code}.\n${this.#stderr.trim()}`,
+            `${command} exited with code ${code} before responding.\n${this.#stderr.trim()}`,
           ),
         );
       }

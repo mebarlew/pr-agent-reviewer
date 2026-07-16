@@ -30,6 +30,36 @@ input.on("line", (line) => {
   }
 
   if (message.method === "session/prompt") {
+    if (message.params.prompt[0].text.includes("noisy")) {
+      send({
+        jsonrpc: "2.0",
+        method: "session/update",
+        params: {
+          sessionId: message.params.sessionId,
+        },
+      });
+      send({
+        jsonrpc: "2.0",
+        method: "session/update",
+        params: {
+          sessionId: message.params.sessionId,
+          update: {
+            sessionUpdate: "tool_call_update",
+            toolCallId: "fake-tool-call",
+            content: [
+              {
+                type: "content",
+                content: {
+                  type: "text",
+                  text: "function boom() { return { nested: {} }; }",
+                },
+              },
+            ],
+          },
+        },
+      });
+    }
+
     send({
       jsonrpc: "2.0",
       method: "session/update",

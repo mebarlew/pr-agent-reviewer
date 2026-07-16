@@ -33,6 +33,24 @@ test("runAcpProvider sends a prompt and collects agent text chunks", async () =>
   });
 });
 
+test("runAcpProvider survives malformed updates and keeps tool output out of the answer", async () => {
+  const result = await runAcpProvider(
+    {
+      type: "acp",
+      command: process.execPath,
+      args: [join(__dirname, "../fixtures/fake-acp-agent.js")],
+    },
+    {
+      prompt: "Review this diff (noisy)",
+      workspace: process.cwd(),
+    },
+  );
+
+  assert.equal(result.stopReason, "end_turn");
+  assert.equal(JSON.parse(result.text).summary, "Fake review complete.");
+  assert.ok(!result.text.includes("function boom"));
+});
+
 test("JsonRpcStdioClient rejects pending requests when the agent exits without reading stdin", async () => {
   const { JsonRpcStdioClient } =
     await import("../src/providers/json-rpc-stdio.js");
@@ -50,6 +68,25 @@ test("JsonRpcStdioClient rejects pending requests when the agent exits without r
         10_000,
       ),
       /exited with code 3/,
+    );
+  } finally {
+    await client.close();
+  }
+});
+
+test("JsonRpcStdioClient rejects pending requests when the agent exits cleanly", async () => {
+  const { JsonRpcStdioClient } =
+    await import("../src/providers/json-rpc-stdio.js");
+  const client = new JsonRpcStdioClient({
+    command: process.execPath,
+    args: ["-e", "setTimeout(() => process.exit(0), 100)"],
+    cwd: process.cwd(),
+  });
+
+  try {
+    await assert.rejects(
+      client.request("initialize", {}, 10_000),
+      /exited with code 0 before responding/,
     );
   } finally {
     await client.close();
