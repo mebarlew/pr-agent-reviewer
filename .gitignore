@@ -4,9 +4,9 @@ node_modules/
 .pr-agent-reviewer.json
 coverage/
 
-# TypeScript build output (emitted in place by `npm run build`)
+# Build output (`npm run build`: tsc emits in place, vite emits app/dist)
 *.tsbuildinfo
-app/app.js
+app/dist/
 bin/*.js
 electron/*.cjs
 scripts/*.cjs

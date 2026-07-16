@@ -43,7 +43,8 @@ export interface CreateAppServerOptions {
 // they are read.
 type JsonBody = Record<string, unknown>;
 
-const appRoot = resolve(fileURLToPath(new URL("../app", import.meta.url)));
+// Static assets come from the Vite build output; `npm run build` produces it.
+const appRoot = resolve(fileURLToPath(new URL("../app/dist", import.meta.url)));
 const reviews = new Map<
   string,
   { result: ReviewRunResult; expiresAt: number }
@@ -410,6 +411,14 @@ async function serveStatic(
     });
     response.end(content);
   } catch {
+    if (relativePath === "index.html") {
+      sendJson(response, 503, {
+        error:
+          "App bundle not found. Run `npm run build` to build the frontend first.",
+      });
+      return;
+    }
+
     sendJson(response, 404, { error: "Not found" });
   }
 }

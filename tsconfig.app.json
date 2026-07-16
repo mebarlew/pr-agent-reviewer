@@ -1,8 +1,17 @@
 {
-  "extends": "./tsconfig.base.json",
   "compilerOptions": {
+    "strict": true,
+    "target": "es2023",
     "lib": ["es2023", "dom", "dom.iterable"],
-    "types": []
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "isolatedModules": true,
+    "noEmit": true,
+    "noUncheckedSideEffectImports": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "types": ["vite/client"]
   },
-  "include": ["app"]
+  "include": ["app/src", "vite.config.ts"]
 }

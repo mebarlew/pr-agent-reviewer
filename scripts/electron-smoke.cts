@@ -6,7 +6,7 @@ import { extname, resolve } from "node:path";
 import { once } from "node:events";
 import { app, BrowserWindow } from "electron";
 
-const appRoot = resolve(__dirname, "../app");
+const appRoot = resolve(__dirname, "../app/dist");
 let server: Server | undefined;
 
 app
