@@ -393,20 +393,18 @@ async function pollReviewThreads() {
 }
 
 function markFindingResolved(thread) {
-  const node = elements.commentsPanel.querySelector(
+  const nodes = elements.commentsPanel.querySelectorAll(
     `.finding[data-path="${CSS.escape(thread.path)}"][data-line="${CSS.escape(String(thread.line))}"]`,
   );
 
-  if (!node) {
-    return;
+  for (const node of nodes) {
+    node.classList.add("resolved");
+    const badge = node.querySelector(".finding-resolved");
+    badge.textContent = thread.resolvedBy
+      ? `Resolved by ${thread.resolvedBy}`
+      : "Resolved";
+    badge.hidden = false;
   }
-
-  node.classList.add("resolved");
-  const badge = node.querySelector(".finding-resolved");
-  badge.textContent = thread.resolvedBy
-    ? `Resolved by ${thread.resolvedBy}`
-    : "Resolved";
-  badge.hidden = false;
 }
 
 function notifyThreadResolved(thread) {
