@@ -30,8 +30,8 @@ const DEFAULT_CONFIG = {
   },
 };
 
-export async function loadConfig(configPath) {
-  const path = configPath ? resolve(configPath) : await findConfig();
+export async function loadConfig(configPath, searchDir) {
+  const path = configPath ? resolve(configPath) : await findConfig(searchDir);
 
   if (!path) {
     return cloneConfig(DEFAULT_CONFIG);
@@ -43,8 +43,8 @@ export async function loadConfig(configPath) {
   return mergeConfig(DEFAULT_CONFIG, userConfig);
 }
 
-async function findConfig() {
-  const candidate = join(cwd(), ".pr-agent-reviewer.json");
+async function findConfig(searchDir = cwd()) {
+  const candidate = join(searchDir, ".pr-agent-reviewer.json");
 
   try {
     await access(candidate);
@@ -79,7 +79,7 @@ function mergeProvider(defaultProvider, userProvider = {}) {
   return {
     ...defaultProvider,
     ...userProvider,
-    args: userProvider.args ?? defaultProvider.args ?? [],
+    args: [...(userProvider.args ?? defaultProvider.args ?? [])],
     env: {
       ...(defaultProvider.env ?? {}),
       ...(userProvider.env ?? {}),

@@ -19,7 +19,7 @@ export async function runReview({
   configPath,
   githubToken,
 }) {
-  const config = await loadConfig(configPath);
+  const config = await loadConfig(configPath, workspace);
   const provider = config.providers[providerName];
 
   if (!provider) {

@@ -47,3 +47,43 @@ test("loadConfig deep merges provider overrides", async () => {
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("loadConfig discovers workspace config in a search directory", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "pr-agent-reviewer-"));
+
+  try {
+    await writeFile(
+      join(dir, ".pr-agent-reviewer.json"),
+      JSON.stringify({
+        providers: {
+          local: {
+            type: "cli",
+            command: "echo",
+          },
+        },
+      }),
+    );
+
+    const config = await loadConfig(undefined, dir);
+    assert.equal(config.providers.local.command, "echo");
+
+    const fallback = await loadConfig(undefined, join(dir, "missing"));
+    assert.equal(fallback.providers.local, undefined);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("loadConfig returns provider args that are safe to mutate", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "pr-agent-reviewer-"));
+
+  try {
+    const first = await loadConfig(undefined, dir);
+    first.providers.codex.args.push("--mutated");
+
+    const second = await loadConfig(undefined, dir);
+    assert.deepEqual(second.providers.codex.args, []);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
