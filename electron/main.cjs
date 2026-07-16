@@ -17,17 +17,29 @@ const authToken = randomUUID();
 let githubTokenStore;
 let server;
 let serverUrl;
+let serverStart;
 let mainWindow;
+let windowCreation;
 let tray;
 let quitting = false;
 
 app.setName("PR Agent Reviewer");
 
-async function startServer() {
-  if (serverUrl) {
-    return serverUrl;
+// second-instance and activate can fire while startup is still awaiting the
+// server or window, so both starters cache their in-flight promise instead
+// of guarding on state that is only set once the work finishes.
+function startServer() {
+  if (!serverStart) {
+    serverStart = launchServer().catch((error) => {
+      serverStart = null;
+      throw error;
+    });
   }
 
+  return serverStart;
+}
+
+async function launchServer() {
   const { createAppServer } = await import("../src/server.js");
   server = createAppServer({ authToken, githubTokenStore });
   server.listen(0, "127.0.0.1");
@@ -38,12 +50,24 @@ async function startServer() {
   server.once("close", () => {
     server = null;
     serverUrl = null;
+    serverStart = null;
   });
 
   return serverUrl;
 }
 
-async function createWindow() {
+function createWindow() {
+  if (!windowCreation) {
+    windowCreation = openWindow().catch((error) => {
+      windowCreation = null;
+      throw error;
+    });
+  }
+
+  return windowCreation;
+}
+
+async function openWindow() {
   const appUrl = await startServer();
 
   mainWindow = new BrowserWindow({
@@ -93,6 +117,7 @@ async function createWindow() {
 
   mainWindow.once("closed", () => {
     mainWindow = null;
+    windowCreation = null;
   });
 
   await mainWindow.loadURL(appUrl);
@@ -170,6 +195,8 @@ async function showMainWindow() {
   }
 
   await createWindow();
+  mainWindow?.show();
+  mainWindow?.focus();
 }
 
 function isAppUrl(url) {
