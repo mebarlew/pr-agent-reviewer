@@ -62,6 +62,24 @@ test("parsePullRequestRef accepts shorthand refs", () => {
   });
 });
 
+test("parseRepositoryRef rejects shorthand refs with path traversal", () => {
+  assert.throws(() => parseRepositoryRef("../widgets"), /Invalid repo ref/);
+  assert.throws(() => parseRepositoryRef("acme/.."), /Invalid repo ref/);
+  assert.throws(() => parseRepositoryRef("acme/%2e%2e"), /Invalid repo ref/);
+});
+
+test("parsePullRequestRef rejects shorthand refs that escape the repo path", () => {
+  assert.throws(
+    () => parsePullRequestRef("owner/../../orgs/x/repos#1"),
+    /Invalid PR ref/,
+  );
+  assert.throws(() => parsePullRequestRef("../widgets#1"), /Invalid PR ref/);
+  assert.throws(
+    () => parsePullRequestRef("acme/widgets%2f..#1"),
+    /Invalid PR ref/,
+  );
+});
+
 test("parseChangedLines indexes added lines in each hunk", () => {
   const changed = parseChangedLines(`@@ -1,4 +1,5 @@
  context

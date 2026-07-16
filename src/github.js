@@ -16,10 +16,12 @@ export function parseRepositoryRef(value) {
 
   const shorthandMatch = value.trim().match(/^([^/\s]+)\/([^/\s]+)$/);
   if (shorthandMatch) {
-    return {
-      owner: shorthandMatch[1],
-      repo: stripGitSuffix(shorthandMatch[2]),
-    };
+    const owner = shorthandMatch[1];
+    const repo = stripGitSuffix(shorthandMatch[2]);
+
+    if (isSafeRepoSegment(owner) && isSafeRepoSegment(repo)) {
+      return { owner, repo };
+    }
   }
 
   throw new Error(
@@ -45,11 +47,12 @@ export function parsePullRequestRef(value) {
 
   const shorthandMatch = value.trim().match(/^([^/\s]+)\/([^#\s]+)#(\d+)$/);
   if (shorthandMatch) {
-    return {
-      owner: shorthandMatch[1],
-      repo: stripGitSuffix(shorthandMatch[2]),
-      number: Number(shorthandMatch[3]),
-    };
+    const owner = shorthandMatch[1];
+    const repo = stripGitSuffix(shorthandMatch[2]);
+
+    if (isSafeRepoSegment(owner) && isSafeRepoSegment(repo)) {
+      return { owner, repo, number: Number(shorthandMatch[3]) };
+    }
   }
 
   throw new Error(
@@ -83,9 +86,15 @@ function stripGitSuffix(value) {
   return value.endsWith(".git") ? value.slice(0, -4) : value;
 }
 
+// Owner and repo are interpolated into API paths, so anything that could
+// change path resolution ("..", "/", "%2f", ...) must be rejected up front.
+function isSafeRepoSegment(value) {
+  return /^[A-Za-z0-9._-]+$/.test(value) && !value.includes("..");
+}
+
 export async function fetchPullRequestContext(ref, token) {
   const pullRequest = await githubRequest(
-    `/repos/${ref.owner}/${ref.repo}/pulls/${ref.number}`,
+    `${repoPath(ref)}/pulls/${ref.number}`,
     { token },
   );
   const files = await fetchPullRequestFiles(ref, token);
@@ -107,7 +116,7 @@ export async function fetchPullRequestContext(ref, token) {
 }
 
 export async function fetchOpenPullRequestsForRepo(ref, token) {
-  const repository = await githubRequest(`/repos/${ref.owner}/${ref.repo}`, {
+  const repository = await githubRequest(repoPath(ref), {
     token,
   });
   const viewer = await fetchViewer(token);
@@ -135,7 +144,7 @@ export async function fetchPullRequestsForBranch(
 ) {
   const head = encodeURIComponent(`${headOwner}:${branch}`);
   const pulls = await githubRequest(
-    `/repos/${owner}/${repo}/pulls?state=open&head=${head}&per_page=10`,
+    `${repoPath({ owner, repo })}/pulls?state=open&head=${head}&per_page=10`,
     { token },
   );
 
@@ -215,7 +224,7 @@ export async function createPullRequestReview(
   }));
 
   const review = await githubRequest(
-    `/repos/${pullRequest.owner}/${pullRequest.repo}/pulls/${pullRequest.number}/reviews`,
+    `${repoPath(pullRequest)}/pulls/${pullRequest.number}/reviews`,
     {
       token,
       method: "POST",
@@ -336,7 +345,7 @@ export async function postIssueComment(pullRequest, body, token) {
   requireToken(token, "--post requires GITHUB_TOKEN");
 
   await githubRequest(
-    `/repos/${pullRequest.owner}/${pullRequest.repo}/issues/${pullRequest.number}/comments`,
+    `${repoPath(pullRequest)}/issues/${pullRequest.number}/comments`,
     {
       token,
       method: "POST",
@@ -347,7 +356,7 @@ export async function postIssueComment(pullRequest, body, token) {
 
 async function fetchPullRequestFiles(ref, token) {
   const files = await githubPaginate(
-    `/repos/${ref.owner}/${ref.repo}/pulls/${ref.number}/files?per_page=100`,
+    `${repoPath(ref)}/pulls/${ref.number}/files?per_page=100`,
     { token },
   );
 
@@ -364,9 +373,13 @@ async function fetchPullRequestFiles(ref, token) {
 
 async function fetchOpenPullRequestPages(ref, token) {
   return githubPaginate(
-    `/repos/${ref.owner}/${ref.repo}/pulls?state=open&sort=updated&direction=desc&per_page=100`,
+    `${repoPath(ref)}/pulls?state=open&sort=updated&direction=desc&per_page=100`,
     { token },
   );
+}
+
+function repoPath({ owner, repo }) {
+  return `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`;
 }
 
 export async function githubRequest(
